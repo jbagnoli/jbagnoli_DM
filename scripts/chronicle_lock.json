@@ -1,0 +1,820 @@
+{
+  "pdf_sha256": "ec9329f07fa629008a95e76865d04d45fe7dd56049e146ec29a037dcd10d5f11",
+  "story": [
+    {
+      "tag": "h2",
+      "text": "The story so far"
+    },
+    {
+      "tag": "p",
+      "text": "A single account drawn from eight available SessionKeeper recaps. Repeated events are told once; the memorable lines and achievements are saved in full below."
+    },
+    {
+      "tag": "div",
+      "text": "August 25, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "Blackthorn’s books"
+    },
+    {
+      "tag": "p",
+      "text": "In rain-soaked Arabel, the party followed Blackthorn’s money through the East Grain Yards. Route keeper Sares Vale maintained a public tally while nervously protecting a finer ledger upstairs in his loft. The burglary was remarkably considerate: Faerl silently opened the door with his card-granted magic, Vroth appeared behind Vale with a dagger, and Althar put the frightened clerk to sleep. Having stolen the route book, they spilled his drink and tucked him into bed before leaving."
+    },
+    {
+      "tag": "p",
+      "text": "The ledger exposed night transfers that made little sense as grain shipments. Entries referred to “faces,” “glasswork,” Cinder Lane, and a blood debt marked with the rune carried on Malchador’s neck. Malchador explained that Iron Throne wizards had placed the mark after replacing his parents with doppelgangers. Attempts to investigate or remove it had caused potentially fatal pain."
+    },
+    {
+      "tag": "p",
+      "text": "Vroth traded the book to Nira at the Glass House. She directed them toward Rhenna Cole, whose remedies-and-spices shop offered suspiciously plentiful, cheap imports. Faerl bought potion ingredients and noticed an unnatural metallic contamination. Posing as a poison buyer, Vroth gained access to the back room and arranged to collect a discreet paralytic later."
+    },
+    {
+      "tag": "div",
+      "text": "September 1, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "The merchant who was in two places"
+    },
+    {
+      "tag": "p",
+      "text": "When Vroth returned, the apparently genuine Rhenna handed over Oil of Taggit. He then spotted armed men removing a chest and satchel through her rear entrance. The woman at the shop checked on them and sent them away."
+    },
+    {
+      "tag": "p",
+      "text": "Vroth and Faerl followed. Using Mage Hand, Vroth cut open the satchel and stole another ledger without alerting its carrier. Instructions led to a building with a forked chimney and warned against using the blue door. Another entry repeated an unsettling instruction: leave the chair empty."
+    },
+    {
+      "tag": "p",
+      "text": "At the dye house, Althar made Faerl and Vroth invisible while he and Aelar supplied a drunken distraction outside. His magical raven diversion ended when someone shot the bird. Inside, Faerl found the real Rhenna bound and unconscious in the loft. Someone else had been running her shop."
+    },
+    {
+      "tag": "p",
+      "text": "The infiltration became a sprawling rescue fight. Faerl survived a fall and climbed back into the struggle. Vroth endured poisoned attacks and resisted Hold Person. Outside, Althar’s Mirror Image and Darkness helped keep the dye workers at bay, while Aelar held the line and supplied healing. The party largely fought to incapacitate rather than kill. Vroth lowered Rhenna safely in an improvised rope sling; the surviving workers surrendered."
+    },
+    {
+      "tag": "div",
+      "text": "September 10, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "Leave the chair empty"
+    },
+    {
+      "tag": "p",
+      "text": "At Malchador’s warehouse, the rescued merchant proved compromised rather than innocent. Rhenna admitted that Blackthorn supplied her business, controlled its prices, and commissioned a difficult-to-trace substance intended to make people compliant. Something had frightened her handlers. Their response had been to abduct her and install a replacement “face.”"
+    },
+    {
+      "tag": "p",
+      "text": "She knew the instruction about the empty chair but little of the wider organization. Rather than remain under uncertain protection, she gave the party a warehouse lead and fled Arabel. Her recovered chest contained unfinished silver masks, bottles of “Remedy,” a Blackthorn token, a lock of her hair, and the message: “Shop is spent. Chair first, then the lane.” Vroth determined that the nonmagical masks could accept fitted stones, potentially including the party’s mythallar fragments, but activating them remained beyond the group’s knowledge."
+    },
+    {
+      "tag": "p",
+      "text": "After daylight reconnaissance encountered a Red Raven mercenary, the party returned invisibly to Blackthorn’s bay. A noisy entrance undermined their stealth; Bells attacked a loft guard and unleashed Thunderwave. One guard died, two others were put to sleep, and the party concealed the casualties in a shallow floor pit before escaping."
+    },
+    {
+      "tag": "p",
+      "text": "Impressions and drag marks showed that something heavy had left for the King’s Trading Yards. By the time the party investigated there, it had moved again. Vroth watched the Red Ravens pay off the night watch and take charge of the compromised warehouse. Rumors spread through Arabel’s underworld: someone had disturbed a dangerous operation, and smaller operators were leaving town."
+    },
+    {
+      "tag": "div",
+      "text": "September 17, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "The wagon trail"
+    },
+    {
+      "tag": "p",
+      "text": "Captain Dorrim Hale offered a bargain: stop interfering with his Red Raven operation, and he would identify the wagon carrying the missing cargo. He supplied a mark and a route toward Eveningstar, together with overheard words about an empty chair, a stone that drinks, a scar, and a farm boy’s master."
+    },
+    {
+      "tag": "p",
+      "text": "Following the trail west that night, the party met a miserable shepherd named Bill. A speeding wagon had scattered his sheep. He recognized its mark and directed them to a dead tree where it had turned north."
+    },
+    {
+      "tag": "p",
+      "text": "Goblins, orcs, and an ogre waited in ambush. Aelar endured the opening arrows. Althar gave Faerl Dragon’s Breath and destroyed a goblin-operated stone launcher with Fireball. Faerl climbed into the enemy positions, Bells used Cloud of Daggers, and the party broke the attack. Surviving goblins fled; an orc was knocked unconscious, and Althar put the ogre to sleep."
+    },
+    {
+      "tag": "div",
+      "text": "September 24, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "Beneath the keep"
+    },
+    {
+      "tag": "p",
+      "text": "Debate over the ogre ended when Malchador executed it. The captive orc revealed that goblins had taken the wagon through a nearby tunnel. The party bound him, gagged him with the ogre’s loincloth, and made him lead the way. Goblin magic killed him during the next confrontation. A captured goblin finally supplied a destination: a ruined keep occupied by goblinoids and masked figures. Some goblins, he said, had abandoned their old god for a new voice."
+    },
+    {
+      "tag": "p",
+      "text": "Vroth and Bells infiltrated the keep invisibly. They found the empty wagon, a blackened hut, and a winch lowering cargo down a shaft. Vroth took gold, an Eveningstar trade ticket, and a Goblin-written slate from a lockbox. After killing and concealing a goblin, the scouts nearly alerted the camp during their escape. Vroth used his Fateweaver mask to rewind the dangerous moment, giving Bells another chance to evade discovery."
+    },
+    {
+      "tag": "p",
+      "text": "The garrison was too substantial for a straightforward assault. Instead, the party followed the “stone that drinks” clue to a natural cistern beneath the keep and rigged a rope crossing."
+    },
+    {
+      "tag": "div",
+      "text": "October 8, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "Fireball at your feet"
+    },
+    {
+      "tag": "p",
+      "text": "The cistern’s water elemental initially fell victim to Bells’s magical laughter. Fighting nevertheless resumed, and Faerl was engulfed, restrained, and left suffocating inside it. The party finally dispersed the creature, with Vroth landing the finishing psychic blade."
+    },
+    {
+      "tag": "p",
+      "text": "Beyond the cistern, they reached a ritual chamber containing brainless goblin corpses, a masked nilbog, a captive, and four distorted duplicates. Althar’s opening Fireball was redirected onto the party by the leader’s mask."
+    },
+    {
+      "tag": "p",
+      "text": "The duplicates repeatedly revived while the captive remained part of the ritual. Vroth killed him, severing that effect. Healing and determined attacks wore down the defenders, and Faerl defeated the nilbog. An apparent spirit escaped its dying body into the rock."
+    },
+    {
+      "tag": "p",
+      "text": "The chamber yielded another mask, a Purple Dragon uniform button, and evidence that Fateweaver imagery had overwritten Khurgorbaeyag’s symbol. When the party approached the firelit passage afterward, a waiting masked woman greeted them with another Fireball."
+    },
+    {
+      "tag": "div",
+      "text": "October 22, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "The Weaver knows you"
+    },
+    {
+      "tag": "p",
+      "text": "That Fireball dropped Bells and Faerl in the narrow passage. Malchador revived Faerl with Lay on Hands, while Aelar used a prayer bead to restore Bells. Inside, the caster turned invisible and pushed a vellum document into a lamp. Her accomplices kept the fight going through Sleep, Hold Person, healing, and another Fireball. Aelar rescued the surviving half of the document. Bells tore the caster’s mask away, Faerl stunned her, and Vroth knocked her unconscious. The party defeated her remaining allies; their invisible imp supporter escaped."
+    },
+    {
+      "tag": "p",
+      "text": "Crates contained pale green glass recognizable from Rhenna Cole’s shop and worked metal apparently intended for a device. Floor scrapes suggested that something assembled there had been dragged through the large door. Papers listed locations across Cormyr and farther afield, including Scardale and Shadowdale, with some checked and others unchecked. A payment chit linked the carriage to Blackthorn. Another note referred to a trial involving Malchador and warned that he answered when brought too close."
+    },
+    {
+      "tag": "p",
+      "text": "The rescued vellum was a royal family tree. Branches beneath Baerovus and a Collinwood line had been scraped away. A surviving annotation read: “unclaimed. Placed with the monks, 1484. Watch, do not touch.” While examining an opening in the wall, Vroth spotted a large, bright eye watching them before its owner retreated."
+    },
+    {
+      "tag": "p",
+      "text": "During a short rest, Althar identified and attuned to the captured half-mask, calling it the Pretty Good Mask. It offered useful magic but allowed a nearby Fateweaver with a superior mask to sense its wearer. On attuning, he heard: “The Weaver knows you.” Malchador received the Cloak of Protection, whose lining showed constellations associated with the Deck of Many Things."
+    },
+    {
+      "tag": "p",
+      "text": "When Faerl brought his card near the family tree, he experienced a vision of gray-skinned soldiers passing through an opening held by a pale, robed figure. He then saw a king falling on Suzail’s walls into another man’s arms. The vision connected the document to something older and more violent, without explaining every identity or proving who was responsible."
+    },
+    {
+      "tag": "p",
+      "text": "Their prisoner named herself Una Pask. She described the Concord as the Weaver determining everyone’s fate and thereby ending uncertainty, pain, and suffering. According to Una, the masks carried its voice. She said she had received the already-damaged family tree from the Chair and had been researching its missing names. Una recognized Malchador as the subject of an earlier trial and connected his neck rune to that experiment. His parents had been taken, she said, but she did not know where. She pointed toward the locked door when asked about another trial and claimed that Vroth was needed for the gate."
+    },
+    {
+      "tag": "p",
+      "text": "With Bells’s encouragement, Vroth posed as someone capable of calling down the Weaver and won Una’s pledge to follow him. He nevertheless killed her with a psychic blade rather than leave the spellcaster behind."
+    },
+    {
+      "tag": "p",
+      "text": "Beyond the door, Malchador scouted a blackened arch fitted with green glass and worked metal. Energy hung between its pillars like a scar. Three masked figures tended it, with an empty chair and cup of water facing the arch. The party withdrew, locked the door, and chose to recover its depleted magic despite Vroth’s desire to interrupt the ritual. During Althar’s Tiny Hut casting, the door shook violently and the distant light vanished. The others stopped Vroth from investigating alone. They reached level six—and noticed his attempt to pretend to sleep and sneak away."
+    },
+    {
+      "tag": "div",
+      "text": "November 6, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "Who pulls your strings?"
+    },
+    {
+      "tag": "p",
+      "text": "After completing their long rest, the party returned to the arch. Three ritualists had been reduced to ash, and an enormous, insubstantial presence occupied the empty chair. It called itself a thread of the Weaver and offered a Concord without suffering or uncertainty—achieved by removing choice."
+    },
+    {
+      "tag": "p",
+      "text": "Althar challenged the bargain and the being’s certainty that its design was right. The presence described Malchador’s mark and the door as trials, promised they would hear it again, and vanished as the gate closed."
+    },
+    {
+      "tag": "p",
+      "text": "Searching the chamber produced a Charlatan’s Die, a Shield of Expression, and a Selûnite crystal. Althar used the crystal to make Malchador’s sword permanently moon-touched. Sitting in the chair gave Faerl a brief view through another person’s eyes into a shop. The other occupant noticed the connection and severed it."
+    },
+    {
+      "tag": "p",
+      "text": "Elsewhere, the party met the Unlettered, a lonely nothic willing to trade information. Malchador exchanged the expressive shield, Bells traded her supposedly magical bell, and Faerl gave up a healing potion. The creature supplied cryptic clues and handed over the orders the party would take to Suzail."
+    },
+    {
+      "tag": "div",
+      "text": "November 6, 2026"
+    },
+    {
+      "tag": "h3",
+      "text": "The Crown, and a private reunion"
+    },
+    {
+      "tag": "p",
+      "text": "On the return journey, the party contacted Sera, attended to their bastion’s trade and recruitment, arranged partial repayment of the Dragon’s Klaugh loan, and established “anvil” as an authentication word."
+    },
+    {
+      "tag": "p",
+      "text": "Suzail showed disturbing signs of hesitation and repetition: people stalled over ordinary choices or repeated themselves. At a private royal audience, the party presented its documents and described the Weaver. The Purple Dragon button was identified as Knight Farren’s. Queen Raedra commissioned an investigation north into the Dales, offering gold, horses, supplies, a favor, and enchantments for a weapon and shield."
+    },
+    {
+      "tag": "p",
+      "text": "Althar reported a troubling vision of his missing master with faceless figures and Netherese crystals. It raised questions; it did not establish betrayal."
+    },
+    {
+      "tag": "p",
+      "text": "Bells produced the damaged royal genealogy. Faerl subsequently requested a private meeting with Prince Baerovus, who acknowledged him as his son and explained that he had sent him to the monks for safety. Faerl promised to protect the family secret. The prince gave him purple-and-gold Wraps of Unarmed Power +1 and spoke of missing Faerl’s mother."
+    },
+    {
+      "tag": "p",
+      "text": "When Faerl began to bow, his father pulled him into a hug."
+    },
+    {
+      "tag": "aside",
+      "text": "Private scene: Faerl’s meeting with Baerovus is part of the recorded story, not knowledge automatically shared by every character."
+    }
+  ],
+  "quotes": [
+    {
+      "text": "“Don't move your mouth.”",
+      "speaker": "Althar",
+      "context": "Offering advice during a dagger-to-the-throat interrogation."
+    },
+    {
+      "text": "“The logistics stop making sense if the wagons are only carrying grain.”",
+      "speaker": "DM",
+      "context": "As the stolen ledger revealed a darker operation."
+    },
+    {
+      "text": "“Most people who come looking for that sort of thing already know whether I can help them or not.”",
+      "speaker": "Rhenna Cole",
+      "context": "Responding to Vroth’s poison-shopping inquiry."
+    },
+    {
+      "text": "“Leave. This is above your pay grade. You don't want any of this. Just trust me. Get out.”",
+      "speaker": "Althar",
+      "context": "Attempting to intimidate a dye worker directly through his skull."
+    },
+    {
+      "text": "“You have discovered me.”",
+      "speaker": "Vroth",
+      "context": "Becoming visible during the collapsing infiltration."
+    },
+    {
+      "text": "“I can take it all!”",
+      "speaker": "Enraged dye worker",
+      "context": "A claim Aelar was prepared to test."
+    },
+    {
+      "text": "“We're the good guys. You needed rescuing.”",
+      "speaker": "Vroth",
+      "context": "Reassuring Rhenna Cole."
+    },
+    {
+      "text": "“Stand down or your lives will be forfeit!”",
+      "speaker": "Bells",
+      "context": "Transforming invisible reconnaissance into a warehouse assault."
+    },
+    {
+      "text": "“The hatch solves all the problems.”",
+      "speaker": "Vroth",
+      "context": "Finding a practical solution for inconvenient casualties."
+    },
+    {
+      "text": "“The chair stays empty until the stone drinks. Not under the purple roof, the scar still shows.”",
+      "speaker": "Captain Dorrim Hale",
+      "context": "Relaying the overheard code."
+    },
+    {
+      "text": "“If I were a lich, not that I’m planning it.”",
+      "speaker": "Althar",
+      "context": "Considering the risks posed by a roadside drunk."
+    },
+    {
+      "text": "“The ogre is fucking asleep for a minute.”",
+      "speaker": "Althar",
+      "context": "Clarifying the available window for diplomacy."
+    },
+    {
+      "text": "“I got a Fireball, motherfuckers.”",
+      "speaker": "Althar",
+      "context": "Celebrating the end of a short rest."
+    },
+    {
+      "text": "“Ogres don't know things.”",
+      "speaker": "Althar",
+      "context": "Contributing to the prisoner debate."
+    },
+    {
+      "text": "“Up to the keep!”",
+      "speaker": "Captured goblin",
+      "context": "Finally providing useful directions."
+    },
+    {
+      "text": "“Ever wonder why water elementals are so bad at cards? Because you can see right through them.”",
+      "speaker": "Bells",
+      "context": "Delivering an incapacitating joke."
+    },
+    {
+      "text": "“Turns out you can't just go in fireballs blazing all the time. Seems like you should be able to, but so far it's been a reliable choice.”",
+      "speaker": "Althar",
+      "context": "Reassessing his usual opening move."
+    },
+    {
+      "text": "“Is his reaction called go fuck yourself?”",
+      "speaker": "Althar",
+      "context": "Watching the nilbog turn a successful attack into healing."
+    },
+    {
+      "text": "“I'll be the last halfling you ever see.”",
+      "speaker": "Bells",
+      "context": "After stealing the caster’s mask and reaching for a dagger."
+    },
+    {
+      "text": "“How will she talk if she's gagged?”",
+      "speaker": "Vroth",
+      "context": "While helping secure their spellcasting prisoner."
+    },
+    {
+      "text": "“Corellon helps those who help themselves.”",
+      "speaker": "Althar",
+      "context": "Arguing against confronting three more masked enemies without spell slots."
+    },
+    {
+      "text": "“You're talking about removing choice, free will, from everyone. Weaving fate to your precise design.”",
+      "speaker": "Althar",
+      "context": "Rejecting the Weaver’s compulsory happiness."
+    },
+    {
+      "text": "“Every gold spent on stables is gold that's not spent on spells.”",
+      "speaker": "Althar",
+      "context": "Explaining his estate budget."
+    },
+    {
+      "text": "“My writ was a favor. Hers is a command, and it will open doors mine never could.”",
+      "speaker": "Prince Baerovus",
+      "context": "Describing the authority of the queen’s commission."
+    }
+  ],
+  "quote_groups": [
+    {
+      "date": "August 25, 2026",
+      "title": "The Book Behind the Glass"
+    },
+    {
+      "date": "September 1, 2026",
+      "title": "The Blue Door Stays Shut"
+    },
+    {
+      "date": "September 10, 2026",
+      "title": "Leave the Chair Empty"
+    },
+    {
+      "date": "September 17, 2026",
+      "title": "The Big Tree Ambush"
+    },
+    {
+      "date": "September 24, 2026",
+      "title": "The Stone That Drinks"
+    },
+    {
+      "date": "October 8, 2026",
+      "title": "Fireball at Your Feet"
+    },
+    {
+      "date": "October 22, 2026",
+      "title": "The Weaver Knows You"
+    },
+    {
+      "date": "November 6, 2026",
+      "title": "Who Pulls Your Strings"
+    }
+  ],
+  "awards": [
+    {
+      "recipient": "Faerl",
+      "title": "The Key to Quiet Crime",
+      "description": "You used your silent opening magic to bypass a locked loft door so cleanly that the party could commit a burglary without waking the clerk. Then you waited outside while they turned it into a bedtime routine."
+    },
+    {
+      "recipient": "Vroth",
+      "title": "Poison Satisfaction Guarantee",
+      "description": "You bluffed your way into Rena Cole's back room, ordered an untraceable paralytic, and negotiated a deposit because you wanted proof it worked. Classic poisoners to wander off and come back."
+    },
+    {
+      "recipient": "Aelar",
+      "title": "Connoisseur of Nougat",
+      "description": "You delivered a snack review with such unwavering conviction that Bastion defense planning briefly became an inquiry into softness, suppleness, and wrapper separation. It was a good fucking Snickers."
+    },
+    {
+      "recipient": "Malchador",
+      "title": "Stable Genius",
+      "description": "You brought a named warhorse into a rainy trade investigation while the group expanded your summoned-mount roster from dire wolf to dwarf elephant. Rogal Dorn awaits his cavalry promotion."
+    },
+    {
+      "recipient": "Althar",
+      "title": "Sleepytime Burglary Protocol",
+      "description": "You put Sares Vale to sleep, stole the ledger implicating his employers, and then insisted the operation include returning him to bed. A proper tuck-in is the mark of a professional."
+    },
+    {
+      "recipient": "Recipient not displayed",
+      "title": "Cowardice Saves",
+      "description": "When a rogue holding a dagger to a clerk's throat rolled a 4 on intimidation, you calmly ruled that the clerk was simply terrified anyway. Fortunately for them, he's a total coward."
+    },
+    {
+      "recipient": "Recipient not displayed",
+      "title": "The Raven Was the Ledger",
+      "description": "You rewarded an elaborate magical bird diversion with an NPC immediately shouting, “That was a fucking raven!” before putting an end to it. The blue door remained shut; the bird did not."
+    },
+    {
+      "recipient": "DM",
+      "title": "The Sense-Based Arcana Ban",
+      "description": "You patiently ruled that the masks could not be identified by smell, then had to extend the policy to listening when the party escalated its research methodology. “You cannot tell by sound if it’s magic either.”"
+    },
+    {
+      "recipient": "DM",
+      "title": "Bill, Junior Account of Bill",
+      "description": "You met the party’s demand for a roadside informant with a miserable shepherd who had exactly one name, one bottle, and no tolerance for aristocratic paperwork. “What do you think I am, a lord?”"
+    },
+    {
+      "recipient": "Recipient not displayed",
+      "title": "The Ogre Loincloth Doctrine",
+      "description": "You accepted a routine prisoner gag and patiently adjudicated it through increasingly unbearable layers of ogre anatomy, sweat, saliva, and recycled humiliation. By the end, it was officially an “ogre butt gag.”"
+    },
+    {
+      "recipient": "Recipient not displayed",
+      "title": "Reversal of Go Fuck Yourself",
+      "description": "You answered a successful strike from Corellon’s glowing sword by having the nilbog cancel the damage and regain three hit points. When asked whether its reaction was called “go fuck yourself,” you confirmed: “Yes, exactly.”"
+    },
+    {
+      "recipient": "Recipient not displayed",
+      "title": "Bedtime Is a Stealth Check",
+      "description": "You awarded level six after the party physically stopped Vroth’s solo expedition, then immediately had to adjudicate his plan to pretend to sleep and sneak out. The locked door was keeping danger out; the paladin was keeping the rogue in."
+    },
+    {
+      "recipient": "Althar",
+      "title": "The Electrum Standard",
+      "description": "The Queen rewarded Bells’s ominous farewell poem with royal grace, declaring art and poetry “more lustrous than any gold.” Then you found the precise exchange rate for artistic merit: “But not electrum.”"
+    }
+  ],
+  "award_groups": [
+    {
+      "date": "August 25, 2026",
+      "title": "The Book Behind the Glass"
+    },
+    {
+      "date": "September 1, 2026",
+      "title": "The Blue Door Stays Shut"
+    },
+    {
+      "date": "September 10, 2026",
+      "title": "Leave the Chair Empty"
+    },
+    {
+      "date": "September 17, 2026",
+      "title": "The Big Tree Ambush"
+    },
+    {
+      "date": "September 24, 2026",
+      "title": "The Stone That Drinks"
+    },
+    {
+      "date": "October 8, 2026",
+      "title": "Fireball at Your Feet"
+    },
+    {
+      "date": "October 22, 2026",
+      "title": "The Weaver Knows You"
+    },
+    {
+      "date": "November 6, 2026",
+      "title": "Who Pulls Your Strings"
+    }
+  ],
+  "source_labels": [
+    {
+      "date": "August 25, 2026",
+      "title": "The Book Behind the Glass"
+    },
+    {
+      "date": "September 1, 2026",
+      "title": "The Blue Door Stays Shut"
+    },
+    {
+      "date": "September 10, 2026",
+      "title": "Leave the Chair Empty"
+    },
+    {
+      "date": "September 17, 2026",
+      "title": "The Big Tree Ambush"
+    },
+    {
+      "date": "September 24, 2026",
+      "title": "The Stone That Drinks"
+    },
+    {
+      "date": "October 8, 2026",
+      "title": "Fireball at Your Feet"
+    },
+    {
+      "date": "October 22, 2026",
+      "title": "The Weaver Knows You"
+    },
+    {
+      "date": "November 6, 2026",
+      "title": "Who Pulls Your Strings"
+    }
+  ],
+  "notes": [
+    "Dates follow the public recaps. The final recap displays November 6; the corresponding session note is dated November 5. This collection covers the eight recaps listed above, not every earlier campaign session.",
+    "Established names are used in the story and attributions. Quoted wording and achievement descriptions are preserved, including original spellings. Sares Vale and Nira retain the recap spellings. The nothic’s delivery of the orders follows the DM’s clarification of what happened at the table."
+  ],
+  "text_nodes": [
+    "The Eternal Concord — Session Chronicle",
+    "Skip to the story",
+    "Campaign Chronicle · Cormyr, 1495 DR",
+    "The Eternal Concord",
+    "From the book behind the glass to a father’s embrace",
+    "August 25 – November 6, 2026",
+    "✦ ─ ✦",
+    "8",
+    "Session recaps",
+    "24",
+    "Notable quotes",
+    "13",
+    "Achievements",
+    "The Story",
+    "Notable Quotes",
+    "Achievements",
+    "Session Sources",
+    "Session Recap",
+    "The story so far",
+    "A single account drawn from eight available SessionKeeper recaps. Repeated events are told once; the memorable lines and achievements are saved in full below.",
+    "August 25, 2026",
+    "Blackthorn’s books",
+    "In rain-soaked Arabel, the party followed Blackthorn’s money through the East Grain Yards. Route keeper Sares Vale maintained a public tally while nervously protecting a finer ledger upstairs in his loft. The burglary was remarkably considerate: Faerl silently opened the door with his card-granted magic, Vroth appeared behind Vale with a dagger, and Althar put the frightened clerk to sleep. Having stolen the route book, they spilled his drink and tucked him into bed before leaving.",
+    "The ledger exposed night transfers that made little sense as grain shipments. Entries referred to “faces,” “glasswork,” Cinder Lane, and a blood debt marked with the rune carried on Malchador’s neck. Malchador explained that Iron Throne wizards had placed the mark after replacing his parents with doppelgangers. Attempts to investigate or remove it had caused potentially fatal pain.",
+    "Vroth traded the book to Nira at the Glass House. She directed them toward Rhenna Cole, whose remedies-and-spices shop offered suspiciously plentiful, cheap imports. Faerl bought potion ingredients and noticed an unnatural metallic contamination. Posing as a poison buyer, Vroth gained access to the back room and arranged to collect a discreet paralytic later.",
+    "September 1, 2026",
+    "The merchant who was in two places",
+    "When Vroth returned, the apparently genuine Rhenna handed over Oil of Taggit. He then spotted armed men removing a chest and satchel through her rear entrance. The woman at the shop checked on them and sent them away.",
+    "Vroth and Faerl followed. Using Mage Hand, Vroth cut open the satchel and stole another ledger without alerting its carrier. Instructions led to a building with a forked chimney and warned against using the blue door. Another entry repeated an unsettling instruction: leave the chair empty.",
+    "At the dye house, Althar made Faerl and Vroth invisible while he and Aelar supplied a drunken distraction outside. His magical raven diversion ended when someone shot the bird. Inside, Faerl found the real Rhenna bound and unconscious in the loft. Someone else had been running her shop.",
+    "The infiltration became a sprawling rescue fight. Faerl survived a fall and climbed back into the struggle. Vroth endured poisoned attacks and resisted Hold Person. Outside, Althar’s Mirror Image and Darkness helped keep the dye workers at bay, while Aelar held the line and supplied healing. The party largely fought to incapacitate rather than kill. Vroth lowered Rhenna safely in an improvised rope sling; the surviving workers surrendered.",
+    "September 10, 2026",
+    "Leave the chair empty",
+    "At Malchador’s warehouse, the rescued merchant proved compromised rather than innocent. Rhenna admitted that Blackthorn supplied her business, controlled its prices, and commissioned a difficult-to-trace substance intended to make people compliant. Something had frightened her handlers. Their response had been to abduct her and install a replacement “face.”",
+    "She knew the instruction about the empty chair but little of the wider organization. Rather than remain under uncertain protection, she gave the party a warehouse lead and fled Arabel. Her recovered chest contained unfinished silver masks, bottles of “Remedy,” a Blackthorn token, a lock of her hair, and the message: “Shop is spent. Chair first, then the lane.” Vroth determined that the nonmagical masks could accept fitted stones, potentially including the party’s mythallar fragments, but activating them remained beyond the group’s knowledge.",
+    "After daylight reconnaissance encountered a Red Raven mercenary, the party returned invisibly to Blackthorn’s bay. A noisy entrance undermined their stealth; Bells attacked a loft guard and unleashed Thunderwave. One guard died, two others were put to sleep, and the party concealed the casualties in a shallow floor pit before escaping.",
+    "Impressions and drag marks showed that something heavy had left for the King’s Trading Yards. By the time the party investigated there, it had moved again. Vroth watched the Red Ravens pay off the night watch and take charge of the compromised warehouse. Rumors spread through Arabel’s underworld: someone had disturbed a dangerous operation, and smaller operators were leaving town.",
+    "September 17, 2026",
+    "The wagon trail",
+    "Captain Dorrim Hale offered a bargain: stop interfering with his Red Raven operation, and he would identify the wagon carrying the missing cargo. He supplied a mark and a route toward Eveningstar, together with overheard words about an empty chair, a stone that drinks, a scar, and a farm boy’s master.",
+    "Following the trail west that night, the party met a miserable shepherd named Bill. A speeding wagon had scattered his sheep. He recognized its mark and directed them to a dead tree where it had turned north.",
+    "Goblins, orcs, and an ogre waited in ambush. Aelar endured the opening arrows. Althar gave Faerl Dragon’s Breath and destroyed a goblin-operated stone launcher with Fireball. Faerl climbed into the enemy positions, Bells used Cloud of Daggers, and the party broke the attack. Surviving goblins fled; an orc was knocked unconscious, and Althar put the ogre to sleep.",
+    "September 24, 2026",
+    "Beneath the keep",
+    "Debate over the ogre ended when Malchador executed it. The captive orc revealed that goblins had taken the wagon through a nearby tunnel. The party bound him, gagged him with the ogre’s loincloth, and made him lead the way. Goblin magic killed him during the next confrontation. A captured goblin finally supplied a destination: a ruined keep occupied by goblinoids and masked figures. Some goblins, he said, had abandoned their old god for a new voice.",
+    "Vroth and Bells infiltrated the keep invisibly. They found the empty wagon, a blackened hut, and a winch lowering cargo down a shaft. Vroth took gold, an Eveningstar trade ticket, and a Goblin-written slate from a lockbox. After killing and concealing a goblin, the scouts nearly alerted the camp during their escape. Vroth used his Fateweaver mask to rewind the dangerous moment, giving Bells another chance to evade discovery.",
+    "The garrison was too substantial for a straightforward assault. Instead, the party followed the “stone that drinks” clue to a natural cistern beneath the keep and rigged a rope crossing.",
+    "October 8, 2026",
+    "Fireball at your feet",
+    "The cistern’s water elemental initially fell victim to Bells’s magical laughter. Fighting nevertheless resumed, and Faerl was engulfed, restrained, and left suffocating inside it. The party finally dispersed the creature, with Vroth landing the finishing psychic blade.",
+    "Beyond the cistern, they reached a ritual chamber containing brainless goblin corpses, a masked nilbog, a captive, and four distorted duplicates. Althar’s opening Fireball was redirected onto the party by the leader’s mask.",
+    "The duplicates repeatedly revived while the captive remained part of the ritual. Vroth killed him, severing that effect. Healing and determined attacks wore down the defenders, and Faerl defeated the nilbog. An apparent spirit escaped its dying body into the rock.",
+    "The chamber yielded another mask, a Purple Dragon uniform button, and evidence that Fateweaver imagery had overwritten Khurgorbaeyag’s symbol. When the party approached the firelit passage afterward, a waiting masked woman greeted them with another Fireball.",
+    "October 22, 2026",
+    "The Weaver knows you",
+    "That Fireball dropped Bells and Faerl in the narrow passage. Malchador revived Faerl with Lay on Hands, while Aelar used a prayer bead to restore Bells. Inside, the caster turned invisible and pushed a vellum document into a lamp. Her accomplices kept the fight going through Sleep, Hold Person, healing, and another Fireball. Aelar rescued the surviving half of the document. Bells tore the caster’s mask away, Faerl stunned her, and Vroth knocked her unconscious. The party defeated her remaining allies; their invisible imp supporter escaped.",
+    "Crates contained pale green glass recognizable from Rhenna Cole’s shop and worked metal apparently intended for a device. Floor scrapes suggested that something assembled there had been dragged through the large door. Papers listed locations across Cormyr and farther afield, including Scardale and Shadowdale, with some checked and others unchecked. A payment chit linked the carriage to Blackthorn. Another note referred to a trial involving Malchador and warned that he answered when brought too close.",
+    "The rescued vellum was a royal family tree. Branches beneath Baerovus and a Collinwood line had been scraped away. A surviving annotation read: “unclaimed. Placed with the monks, 1484. Watch, do not touch.” While examining an opening in the wall, Vroth spotted a large, bright eye watching them before its owner retreated.",
+    "During a short rest, Althar identified and attuned to the captured half-mask, calling it the Pretty Good Mask. It offered useful magic but allowed a nearby Fateweaver with a superior mask to sense its wearer. On attuning, he heard: “The Weaver knows you.” Malchador received the Cloak of Protection, whose lining showed constellations associated with the Deck of Many Things.",
+    "When Faerl brought his card near the family tree, he experienced a vision of gray-skinned soldiers passing through an opening held by a pale, robed figure. He then saw a king falling on Suzail’s walls into another man’s arms. The vision connected the document to something older and more violent, without explaining every identity or proving who was responsible.",
+    "Their prisoner named herself Una Pask. She described the Concord as the Weaver determining everyone’s fate and thereby ending uncertainty, pain, and suffering. According to Una, the masks carried its voice. She said she had received the already-damaged family tree from the Chair and had been researching its missing names. Una recognized Malchador as the subject of an earlier trial and connected his neck rune to that experiment. His parents had been taken, she said, but she did not know where. She pointed toward the locked door when asked about another trial and claimed that Vroth was needed for the gate.",
+    "With Bells’s encouragement, Vroth posed as someone capable of calling down the Weaver and won Una’s pledge to follow him. He nevertheless killed her with a psychic blade rather than leave the spellcaster behind.",
+    "Beyond the door, Malchador scouted a blackened arch fitted with green glass and worked metal. Energy hung between its pillars like a scar. Three masked figures tended it, with an empty chair and cup of water facing the arch. The party withdrew, locked the door, and chose to recover its depleted magic despite Vroth’s desire to interrupt the ritual. During Althar’s Tiny Hut casting, the door shook violently and the distant light vanished. The others stopped Vroth from investigating alone. They reached level six—and noticed his attempt to pretend to sleep and sneak away.",
+    "November 6, 2026",
+    "Who pulls your strings?",
+    "After completing their long rest, the party returned to the arch. Three ritualists had been reduced to ash, and an enormous, insubstantial presence occupied the empty chair. It called itself a thread of the Weaver and offered a Concord without suffering or uncertainty—achieved by removing choice.",
+    "Althar challenged the bargain and the being’s certainty that its design was right. The presence described Malchador’s mark and the door as trials, promised they would hear it again, and vanished as the gate closed.",
+    "Searching the chamber produced a Charlatan’s Die, a Shield of Expression, and a Selûnite crystal. Althar used the crystal to make Malchador’s sword permanently moon-touched. Sitting in the chair gave Faerl a brief view through another person’s eyes into a shop. The other occupant noticed the connection and severed it.",
+    "Elsewhere, the party met the Unlettered, a lonely nothic willing to trade information. Malchador exchanged the expressive shield, Bells traded her supposedly magical bell, and Faerl gave up a healing potion. The creature supplied cryptic clues and handed over the orders the party would take to Suzail.",
+    "November 6, 2026",
+    "The Crown, and a private reunion",
+    "On the return journey, the party contacted Sera, attended to their bastion’s trade and recruitment, arranged partial repayment of the Dragon’s Klaugh loan, and established “anvil” as an authentication word.",
+    "Suzail showed disturbing signs of hesitation and repetition: people stalled over ordinary choices or repeated themselves. At a private royal audience, the party presented its documents and described the Weaver. The Purple Dragon button was identified as Knight Farren’s. Queen Raedra commissioned an investigation north into the Dales, offering gold, horses, supplies, a favor, and enchantments for a weapon and shield.",
+    "Althar reported a troubling vision of his missing master with faceless figures and Netherese crystals. It raised questions; it did not establish betrayal.",
+    "Bells produced the damaged royal genealogy. Faerl subsequently requested a private meeting with Prince Baerovus, who acknowledged him as his son and explained that he had sent him to the monks for safety. Faerl promised to protect the family secret. The prince gave him purple-and-gold Wraps of Unarmed Power +1 and spoke of missing Faerl’s mother.",
+    "When Faerl began to bow, his father pulled him into a hug.",
+    "Private scene:",
+    "Faerl’s meeting with Baerovus is part of the recorded story, not knowledge automatically shared by every character.",
+    "Notable Quotes",
+    "Words worth keeping",
+    "All 24 notable quotes, with their original wording.",
+    "August 25, 2026",
+    "The Book Behind the Glass",
+    "“Don't move your mouth.”",
+    "—",
+    "Althar",
+    "· Offering advice during a dagger-to-the-throat interrogation.",
+    "“The logistics stop making sense if the wagons are only carrying grain.”",
+    "—",
+    "DM",
+    "· As the stolen ledger revealed a darker operation.",
+    "“Most people who come looking for that sort of thing already know whether I can help them or not.”",
+    "—",
+    "Rhenna Cole",
+    "· Responding to Vroth’s poison-shopping inquiry.",
+    "September 1, 2026",
+    "The Blue Door Stays Shut",
+    "“Leave. This is above your pay grade. You don't want any of this. Just trust me. Get out.”",
+    "—",
+    "Althar",
+    "· Attempting to intimidate a dye worker directly through his skull.",
+    "“You have discovered me.”",
+    "—",
+    "Vroth",
+    "· Becoming visible during the collapsing infiltration.",
+    "“I can take it all!”",
+    "—",
+    "Enraged dye worker",
+    "· A claim Aelar was prepared to test.",
+    "September 10, 2026",
+    "Leave the Chair Empty",
+    "“We're the good guys. You needed rescuing.”",
+    "—",
+    "Vroth",
+    "· Reassuring Rhenna Cole.",
+    "“Stand down or your lives will be forfeit!”",
+    "—",
+    "Bells",
+    "· Transforming invisible reconnaissance into a warehouse assault.",
+    "“The hatch solves all the problems.”",
+    "—",
+    "Vroth",
+    "· Finding a practical solution for inconvenient casualties.",
+    "September 17, 2026",
+    "The Big Tree Ambush",
+    "“The chair stays empty until the stone drinks. Not under the purple roof, the scar still shows.”",
+    "—",
+    "Captain Dorrim Hale",
+    "· Relaying the overheard code.",
+    "“If I were a lich, not that I’m planning it.”",
+    "—",
+    "Althar",
+    "· Considering the risks posed by a roadside drunk.",
+    "“The ogre is fucking asleep for a minute.”",
+    "—",
+    "Althar",
+    "· Clarifying the available window for diplomacy.",
+    "September 24, 2026",
+    "The Stone That Drinks",
+    "“I got a Fireball, motherfuckers.”",
+    "—",
+    "Althar",
+    "· Celebrating the end of a short rest.",
+    "“Ogres don't know things.”",
+    "—",
+    "Althar",
+    "· Contributing to the prisoner debate.",
+    "“Up to the keep!”",
+    "—",
+    "Captured goblin",
+    "· Finally providing useful directions.",
+    "October 8, 2026",
+    "Fireball at Your Feet",
+    "“Ever wonder why water elementals are so bad at cards? Because you can see right through them.”",
+    "—",
+    "Bells",
+    "· Delivering an incapacitating joke.",
+    "“Turns out you can't just go in fireballs blazing all the time. Seems like you should be able to, but so far it's been a reliable choice.”",
+    "—",
+    "Althar",
+    "· Reassessing his usual opening move.",
+    "“Is his reaction called go fuck yourself?”",
+    "—",
+    "Althar",
+    "· Watching the nilbog turn a successful attack into healing.",
+    "October 22, 2026",
+    "The Weaver Knows You",
+    "“I'll be the last halfling you ever see.”",
+    "—",
+    "Bells",
+    "· After stealing the caster’s mask and reaching for a dagger.",
+    "“How will she talk if she's gagged?”",
+    "—",
+    "Vroth",
+    "· While helping secure their spellcasting prisoner.",
+    "“Corellon helps those who help themselves.”",
+    "—",
+    "Althar",
+    "· Arguing against confronting three more masked enemies without spell slots.",
+    "November 6, 2026",
+    "Who Pulls Your Strings",
+    "“You're talking about removing choice, free will, from everyone. Weaving fate to your precise design.”",
+    "—",
+    "Althar",
+    "· Rejecting the Weaver’s compulsory happiness.",
+    "“Every gold spent on stables is gold that's not spent on spells.”",
+    "—",
+    "Althar",
+    "· Explaining his estate budget.",
+    "“My writ was a favor. Hers is a command, and it will open doors mine never could.”",
+    "—",
+    "Prince Baerovus",
+    "· Describing the authority of the queen’s commission.",
+    "Achievements Unlocked",
+    "The party’s finest work",
+    "All 13 displayed achievements, including their full original descriptions. Unlisted recipients remain unassigned.",
+    "August 25, 2026",
+    "The Book Behind the Glass",
+    "Faerl",
+    "The Key to Quiet Crime",
+    "You used your silent opening magic to bypass a locked loft door so cleanly that the party could commit a burglary without waking the clerk. Then you waited outside while they turned it into a bedtime routine.",
+    "Vroth",
+    "Poison Satisfaction Guarantee",
+    "You bluffed your way into Rena Cole's back room, ordered an untraceable paralytic, and negotiated a deposit because you wanted proof it worked. Classic poisoners to wander off and come back.",
+    "Aelar",
+    "Connoisseur of Nougat",
+    "You delivered a snack review with such unwavering conviction that Bastion defense planning briefly became an inquiry into softness, suppleness, and wrapper separation. It was a good fucking Snickers.",
+    "Malchador",
+    "Stable Genius",
+    "You brought a named warhorse into a rainy trade investigation while the group expanded your summoned-mount roster from dire wolf to dwarf elephant. Rogal Dorn awaits his cavalry promotion.",
+    "Althar",
+    "Sleepytime Burglary Protocol",
+    "You put Sares Vale to sleep, stole the ledger implicating his employers, and then insisted the operation include returning him to bed. A proper tuck-in is the mark of a professional.",
+    "Recipient not displayed",
+    "Cowardice Saves",
+    "When a rogue holding a dagger to a clerk's throat rolled a 4 on intimidation, you calmly ruled that the clerk was simply terrified anyway. Fortunately for them, he's a total coward.",
+    "September 1, 2026",
+    "The Blue Door Stays Shut",
+    "Recipient not displayed",
+    "The Raven Was the Ledger",
+    "You rewarded an elaborate magical bird diversion with an NPC immediately shouting, “That was a fucking raven!” before putting an end to it. The blue door remained shut; the bird did not.",
+    "September 10, 2026",
+    "Leave the Chair Empty",
+    "DM",
+    "The Sense-Based Arcana Ban",
+    "You patiently ruled that the masks could not be identified by smell, then had to extend the policy to listening when the party escalated its research methodology. “You cannot tell by sound if it’s magic either.”",
+    "September 17, 2026",
+    "The Big Tree Ambush",
+    "DM",
+    "Bill, Junior Account of Bill",
+    "You met the party’s demand for a roadside informant with a miserable shepherd who had exactly one name, one bottle, and no tolerance for aristocratic paperwork. “What do you think I am, a lord?”",
+    "September 24, 2026",
+    "The Stone That Drinks",
+    "Recipient not displayed",
+    "The Ogre Loincloth Doctrine",
+    "You accepted a routine prisoner gag and patiently adjudicated it through increasingly unbearable layers of ogre anatomy, sweat, saliva, and recycled humiliation. By the end, it was officially an “ogre butt gag.”",
+    "October 8, 2026",
+    "Fireball at Your Feet",
+    "Recipient not displayed",
+    "Reversal of Go Fuck Yourself",
+    "You answered a successful strike from Corellon’s glowing sword by having the nilbog cancel the damage and regain three hit points. When asked whether its reaction was called “go fuck yourself,” you confirmed: “Yes, exactly.”",
+    "October 22, 2026",
+    "The Weaver Knows You",
+    "Recipient not displayed",
+    "Bedtime Is a Stealth Check",
+    "You awarded level six after the party physically stopped Vroth’s solo expedition, then immediately had to adjudicate his plan to pretend to sleep and sneak out. The locked door was keeping danger out; the paladin was keeping the rogue in.",
+    "November 6, 2026",
+    "Who Pulls Your Strings",
+    "Althar",
+    "The Electrum Standard",
+    "The Queen rewarded Bells’s ominous farewell poem with royal grace, declaring art and poetry “more lustrous than any gold.” Then you found the precise exchange rate for artistic merit: “But not electrum.”",
+    "Session Sources",
+    "Back to the table",
+    "August 25, 2026",
+    "The Book Behind the Glass",
+    "https://share.sessionkeeper.ai/s/fJbD7u",
+    "September 1, 2026",
+    "The Blue Door Stays Shut",
+    "https://share.sessionkeeper.ai/s/UX5ndw",
+    "September 10, 2026",
+    "Leave the Chair Empty",
+    "https://share.sessionkeeper.ai/s/4MSZyv",
+    "September 17, 2026",
+    "The Big Tree Ambush",
+    "https://share.sessionkeeper.ai/s/XSbRae",
+    "September 24, 2026",
+    "The Stone That Drinks",
+    "https://share.sessionkeeper.ai/s/4HzqVr",
+    "October 8, 2026",
+    "Fireball at Your Feet",
+    "https://share.sessionkeeper.ai/s/NLNSsp",
+    "October 22, 2026",
+    "The Weaver Knows You",
+    "https://share.sessionkeeper.ai/s/XY8nBr",
+    "November 6, 2026",
+    "Who Pulls Your Strings",
+    "https://share.sessionkeeper.ai/s/xbsJcT",
+    "Dates follow the public recaps. The final recap displays November 6; the corresponding session note is dated November 5. This collection covers the eight recaps listed above, not every earlier campaign session.",
+    "Established names are used in the story and attributions. Quoted wording and achievement descriptions are preserved, including original spellings. Sares Vale and Nira retain the recap spellings. The nothic’s delivery of the orders follows the DM’s clarification of what happened at the table.",
+    "The Eternal Concord · Session Chronicle",
+    "Compiled from SessionKeeper recaps · November 7, 2026",
+    "Portable edition · No scripts, tracking, or external assets"
+  ]
+}
