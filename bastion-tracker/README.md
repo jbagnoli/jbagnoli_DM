@@ -19,7 +19,7 @@ The publishable key is not a JWT. The tracker sends it as the `apikey` header. B
 
 ## What you still do
 
-1. After this change is merged, run `supabase/migrations/003_command_parity.sql` in the Supabase SQL editor. Do not run `001` again. `002` only pinned a search path and does not need to be run again. `003` teaches the database the orders the tracker already sends, and new estates start with a turn every 10 in-game days. It does not change a bastion that is already saved. If an existing estate should use 10 days, set that in Settings.
+1. After this change is merged, run `supabase/migrations/004_remove_blank_goods.sql` in the Supabase SQL editor. `001`, `002`, and `003` are already applied, so do not run them again. `004` refuses goods with no name or a price of zero, and lets the DM remove a goods entry that is not tied to an open order. It does not change cash, and it does not delete entries by itself.
 2. Open the tracker and sign in with the DM account. The first sign-in creates your estate and makes you its DM. Until you sign in, the page stays **Not connected**.
 3. Add other people in the Supabase dashboard (Authentication → Users). Use the same email they will type here. Public signup will not create accounts.
 4. Sign in as the DM and create an invite code for that email and role. Give them the code yourself. They sign in, then accept the code.
