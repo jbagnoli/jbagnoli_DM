@@ -5,6 +5,8 @@ import test from "node:test";
 import { saleProceeds, specialCap } from "./catalog.js";
 import { practiceState } from "./demo.js";
 import { configured, isSecretKey, serviceRoleRejected } from "./remote.js";
+import { canAccept, markAgainstRecord, parseReview } from "./review.js";
+import { beginSave, failSave, markSavingButtons, succeedSave } from "./save-feedback.js";
 import { render } from "./render.js";
 import { RuleError, apply, emptyEstate } from "./rules.js";
 
@@ -381,6 +383,9 @@ test("settings and the DM record screen are reachable", () => {
   assert.doesNotMatch(settings, /<input id="level"/);
   for (let level = 1; level <= 20; level += 1) assert.match(settings, new RegExp(`value="${level}"`));
   assert.match(settings, /none of them change/);
+  assert.match(settings, /for="date-label">Date </);
+  assert.match(settings, /placeholder="Leave blank if the date is unknown"/);
+  assert.doesNotMatch(settings, /Calendar label/);
   const record = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: true, serviceRole: false });
   assert.match(record, /Defenders already housed/);
   assert.match(record, /Outstanding loan/);
@@ -389,10 +394,192 @@ test("settings and the DM record screen are reachable", () => {
   assert.match(record, /runs a Recruit turn/);
 });
 
+function reviewModel(state, items, text) {
+  return { mode: "sandbox", view: "import", state, review: items, reviewText: text, error: "", notice: "", configured: false, serviceRole: false };
+}
+
+test("a review list stays on screen after one item is accepted", () => {
+  const text = JSON.stringify({
+    specials: [
+      { value: { name: "Barrack" }, status: "recorded", section: "Special" },
+      { value: { name: "Library" }, status: "recorded", section: "Special" },
+    ],
+  });
+  let state = emptyEstate({ name: "Practice Hall", level: 5 });
+  const items = markAgainstRecord(parseReview(text), state);
+  state = apply(state, { type: "import_accept", item: items[0].command }).state;
+  items[0].accepted = true;
+  const html = render(reviewModel(state, items, text));
+  assert.match(html, /Barrack/);
+  assert.match(html, /Library/);
+  assert.match(html, /&quot;specials&quot;/);
+  assert.match(html, /disabled>Added</);
+  assert.match(html, /data-action="accept-review" data-index="1"/);
+  assert.equal(canAccept(items[0]), false);
+  assert.equal(canAccept(items[1]), true);
+  const again = render(reviewModel(state, items, text));
+  assert.match(again, /disabled>Added</);
+  assert.match(again, /Accept this item/);
+});
+
+test("reading a review again marks a Barrack that is already kept", () => {
+  const text = JSON.stringify({
+    specials: [{ value: { name: "Barrack" }, status: "recorded", section: "Special" }],
+  });
+  let state = emptyEstate({ name: "Practice Hall", level: 5 });
+  state = apply(state, { type: "import_accept", item: { kind: "facility", catalogId: "barrack" } }).state;
+  const items = markAgainstRecord(parseReview(text), state);
+  assert.equal(items[0].present, true);
+  assert.equal(canAccept(items[0]), false);
+  const html = render(reviewModel(state, items, text));
+  assert.match(html, /Already in the record/);
+  assert.doesNotMatch(html, /Accept this item/);
+});
+
+test("one existing bedroom covers one of four identical review rooms", () => {
+  const text = JSON.stringify({
+    basics: Array.from({ length: 4 }, () => ({ value: { type: "Bedroom", space: "cramped" }, status: "recorded", section: "Basic" })),
+  });
+  let state = emptyEstate({ name: "Practice Hall", level: 5 });
+  state = apply(state, { type: "add_basic", unitId: "unit-party", roomId: "bedroom", space: "cramped", inherited: true }).state;
+  const items = markAgainstRecord(parseReview(text), state);
+  assert.equal(items.length, 4);
+  assert.equal(items.filter((item) => item.present).length, 1);
+  assert.equal(items.filter((item) => canAccept(item)).length, 3);
+});
+
+test("the DM can remove a mistaken roster name and not someone the rules still count", () => {
+  let state = emptyEstate({ name: "Practice Hall" });
+  state = apply(state, {
+    type: "roster_save",
+    person: { name: "Ada Moss", category: "household", role: "Steward", unitId: "unit-party" },
+  }).state;
+  const duplicate = apply(state, {
+    type: "roster_save",
+    person: { name: "Ada Moss", category: "household", role: "Steward", unitId: "unit-party" },
+  }).state;
+  assert.equal(duplicate.roster.length, 2);
+  const cash = duplicate.finance.cashGp;
+  const removed = apply(duplicate, { type: "remove_person", personId: duplicate.roster[1].id }).state;
+  assert.equal(removed.roster.length, 1);
+  assert.equal(removed.roster[0].id, duplicate.roster[0].id);
+  assert.equal(removed.finance.cashGp, cash);
+  assert.equal(removed.audit.at(-1).type, "remove_person");
+  assert.throws(() => apply(duplicate, { type: "remove_person", actorRole: "editor", personId: duplicate.roster[0].id }), (error) => error.code === "forbidden");
+  const keeper = apply(removed, {
+    type: "roster_save",
+    person: { name: "Yard hand", category: "hireling", role: "Yard", facilityId: "fac-1", unitId: "unit-party" },
+  }).state;
+  keeper.facilities.push({ id: "fac-1", kind: "special", catalogId: "garden", status: "active", unitId: "unit-party" });
+  const hired = keeper.roster.find((person) => person.name === "Yard hand");
+  assert.throws(() => apply(keeper, { type: "remove_person", personId: hired.id }), (error) => error.code === "person_held");
+  const guard = apply(removed, {
+    type: "roster_save",
+    person: { name: "Pell Ash", category: "defender", role: "Defender", facilityId: "fac-2", unitId: "unit-party" },
+  }).state;
+  const defender = guard.roster.find((person) => person.category === "defender");
+  assert.throws(() => apply(guard, { type: "remove_person", personId: defender.id }), (error) => error.code === "person_held");
+  const guest = apply(removed, {
+    type: "roster_save",
+    person: { name: "One-night guest", category: "guest", role: "Guest", protectsOnce: true, unitId: "unit-party" },
+  }).state;
+  const protector = guest.roster.find((person) => person.protectsOnce);
+  assert.throws(() => apply(guest, { type: "remove_person", personId: protector.id }), (error) => error.code === "person_held");
+});
+
+test("an editor can name an unnamed hireling without changing the id or assignment", () => {
+  let state = emptyEstate({ name: "Practice Hall" });
+  state.facilities.push({ id: "fac-9", unitId: "unit-party", kind: "special", catalogId: "smithy", name: "Smithy", status: "active" });
+  state = apply(state, {
+    type: "roster_save",
+    person: { name: "  ", category: "hireling", role: "Smith", facilityId: "fac-9", unitId: "unit-party" },
+  }).state;
+  const placeholder = state.roster.at(-1);
+  assert.equal(placeholder.name, "");
+  const html = render({ mode: "sandbox", view: "people", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(html, /Unnamed \(Smith\)/);
+  assert.match(html, />Unnamed</);
+  const edited = apply(state, {
+    type: "edit_person",
+    actorRole: "editor",
+    personId: placeholder.id,
+    name: "Ada Moss",
+    role: "Smith",
+    category: "hireling",
+    summary: "Works the forge",
+    link: "",
+  }).state;
+  assert.equal(edited.roster.at(-1).id, placeholder.id);
+  assert.equal(edited.roster.at(-1).name, "Ada Moss");
+  assert.equal(edited.roster.at(-1).facilityId, "fac-9");
+  assert.match(edited.audit.at(-1).summary, /"" → "Ada Moss"/);
+  assert.throws(() => apply(edited, {
+    type: "edit_person",
+    actorRole: "editor",
+    personId: placeholder.id,
+    name: "Ada Moss",
+    category: "household",
+  }), (error) => error.code === "category_locked");
+  assert.throws(() => apply(state, { type: "edit_person", actorRole: "reader", personId: placeholder.id, name: "Ada Moss" }), (error) => error.code === "forbidden");
+});
+
+test("save feedback names a practice save differently from a shared save", () => {
+  assert.equal(beginSave("settings").status, "pending");
+  assert.equal(beginSave("settings").message, "Saving…");
+  const shared = succeedSave({ practice: false, summary: "Recorded 8 defenders at Barrack." });
+  assert.match(shared.message, /^Saved: Recorded 8 defenders at Barrack\./);
+  const practice = succeedSave({ practice: true, summary: "Recorded 8 defenders at Barrack." });
+  assert.match(practice.message, /^Saved on this device \(practice\): Recorded 8 defenders at Barrack\./);
+  assert.doesNotMatch(practice.message, /^Saved:/);
+  const failed = failSave("Level 1 allows 0 special facilities, and this unit already has 2.");
+  assert.equal(failed.status, "failure");
+  const pending = render({
+    mode: "sandbox",
+    view: "settings",
+    state: emptyEstate({ name: "Practice Hall" }),
+    save: beginSave("settings"),
+    error: "",
+    notice: "",
+    configured: false,
+    serviceRole: false,
+  });
+  assert.match(pending, /id="save-feedback"/);
+  assert.match(pending, /Saving…/);
+  assert.match(pending, /<button class="primary" type="submit" disabled>Saving…<\/button>/);
+  const success = render({
+    mode: "sandbox",
+    view: "settings",
+    state: emptyEstate({ name: "Practice Hall" }),
+    save: practice,
+    error: "",
+    notice: "",
+    configured: false,
+    serviceRole: false,
+  });
+  assert.match(success, /role="status"/);
+  assert.match(success, /aria-live="polite"/);
+  assert.match(success, /Saved on this device \(practice\)/);
+  const failure = render({
+    mode: "remote",
+    view: "settings",
+    state: emptyEstate({ name: "Practice Hall" }),
+    save: failed,
+    error: failed.message,
+    notice: "",
+    configured: true,
+    serviceRole: false,
+  });
+  assert.match(failure, /role="alert"/);
+  assert.match(failure, /Level 1 allows 0 special facilities/);
+  assert.doesNotMatch(failure, /disabled>Saving…/);
+  const buttons = markSavingButtons(`<form id="goods"><button class="primary" type="submit">Record goods without charging</button></form>`, "goods");
+  assert.match(buttons, /disabled>Saving…/);
+});
+
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/004_remove_blank_goods.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
   const cases = [...rules.matchAll(/case "([a-z_]+)":/g)].map((match) => match[1]);
   assert.equal(new Set(cases).size, cases.length);
   const block = migration.match(/function public\.handled_command_types\(\)[\s\S]*?array\[([\s\S]*?)\]::text\[\]/);
