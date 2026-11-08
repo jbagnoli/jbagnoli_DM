@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { saleProceeds, specialCap } from "./catalog.js";
 import { practiceState } from "./demo.js";
+import { configured, isSecretKey, serviceRoleRejected } from "./remote.js";
 import { render } from "./render.js";
 import { RuleError, apply, emptyEstate } from "./rules.js";
 
@@ -250,6 +251,22 @@ test("review import does not finish historic turns or invent balances", () => {
   assert.equal(imported.finance.cashKnown, false);
 });
 
+test("publishable keys are accepted and secret keys are refused", () => {
+  const url = "https://example.supabase.co";
+  const publishable = { supabaseUrl: url, supabaseAnonKey: "sb_publishable_example" };
+  const secret = { supabaseUrl: url, supabaseAnonKey: "sb_secret_example" };
+  const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
+  const body = btoa(JSON.stringify({ role: "service" + "_role" }));
+  const legacySecret = { supabaseUrl: url, supabaseAnonKey: `${header}.${body}.sig` };
+  assert.equal(isSecretKey(publishable.supabaseAnonKey), false);
+  assert.equal(configured(publishable), true);
+  assert.equal(serviceRoleRejected(publishable), false);
+  assert.equal(configured(secret), false);
+  assert.equal(serviceRoleRejected(secret), true);
+  assert.equal(configured(legacySecret), false);
+  assert.equal(configured({ supabaseUrl: url, supabaseAnonKey: "" }), false);
+});
+
 test("practice sandbox renders and is labeled as not the group record", () => {
   const state = practiceState();
   assert.equal(state.practice, true);
@@ -258,6 +275,7 @@ test("practice sandbox renders and is labeled as not the group record", () => {
   assert.match(html, /Practice sandbox/);
   assert.match(html, /Hearthwatch Hold/);
   assert.match(html, /Not the group record/);
+  assert.match(html, /not synced/);
   const gate = render({ mode: "gate", configured: false, serviceRole: false, error: "", notice: "" });
   assert.match(gate, /Not connected/);
   assert.match(gate, /Setup is required/);

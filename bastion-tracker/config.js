@@ -1,7 +1,7 @@
-// Fill these in after you create your own Supabase project.
-// Use the project URL and the anon public key only.
-// Never put the secret database key here. This file is published with the site.
+// Shared project. This file is published with the site.
+// The value below is the browser publishable key. It is sent as the apikey header.
+// Never put a secret key in this file.
 export const BASTION_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://yenlmahoeqmvmzegtoag.supabase.co",
+  supabaseAnonKey: "sb_publishable_PNLu5kkRgPEycD42-WFxZA_P90nGsCs",
 };

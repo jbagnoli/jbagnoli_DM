@@ -8,20 +8,30 @@ function jwtRole(key) {
   }
 }
 
+/** Publishable keys are not JWTs. Secret keys and the old secret JWT must never be used here. */
+export function isSecretKey(key) {
+  if (!key) return false;
+  if (key.startsWith("sb_secret_")) return true;
+  return jwtRole(key) === "service" + "_role";
+}
+
 export function configured(config) {
   if (!config?.supabaseUrl || !config?.supabaseAnonKey) return false;
-  if (jwtRole(config.supabaseAnonKey) === "service" + "_role") return false;
+  if (isSecretKey(config.supabaseAnonKey)) return false;
   return true;
 }
 
 export function serviceRoleRejected(config) {
-  return Boolean(config?.supabaseAnonKey) && jwtRole(config.supabaseAnonKey) === "service" + "_role";
+  return Boolean(config?.supabaseAnonKey) && isSecretKey(config.supabaseAnonKey);
 }
 
 async function request(config, path, { method = "GET", body, token, headers = {} } = {}) {
   const response = await fetch(`${config.supabaseUrl.replace(/\/$/, "")}${path}`, {
     method,
     headers: {
+      // The publishable key is sent as apikey. Before sign-in it is also the bearer
+      // token, which this project accepts as the anonymous role. After sign-in the
+      // bearer token is the user's access token and apikey stays the publishable key.
       apikey: config.supabaseAnonKey,
       Authorization: `Bearer ${token || config.supabaseAnonKey}`,
       "Content-Type": "application/json",

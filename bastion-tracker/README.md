@@ -2,25 +2,31 @@
 
 A shared record for bastion rooms, people, money, and turns. The chronicle at `../eternal-concord/` is unchanged.
 
-The page is not the group's record until you connect a database. Until then it says **Not connected** and offers a practice sandbox. The sandbox is fictional, stays in the browser tab, and is dropped when you leave. A failed save is shown as an error. It is not written onto this device and called a success.
+The shared database is already created. The site uses its publishable key. You are not in the group record until you sign in. The practice sandbox stays on **Not connected** and is labeled as not synced. A failed save is shown as an error. It is not written onto this device and called a success.
 
 Notion is left as it is. This app does not write to Notion. Full NPC histories stay there. The roster here is a name, a role, a short line, and an optional link.
 
 The github.io host may still show Chrome's "Dangerous site" warning until Google finishes its review. Do not ask players to bypass that warning, and do not treat the address as ready to share until the warning is gone.
 
-## What you do once
+## What is already set up
 
-These steps are yours. This repository does not create the database or turn Pages on.
+- The Supabase project exists. `config.js` has its URL and publishable key. That key is safe to publish. Do not put a secret key in the site.
+- `supabase/migrations/001_bastion.sql` has been applied.
+- Public signup is off. Email and password sign-in is on. The DM account was created by hand in the Supabase dashboard.
+- Anonymous visitors cannot read the tables or create an estate. That was checked against the live project.
 
-1. Create a Supabase project on the free plan. Do not add a paid add-on.
-2. In the SQL editor, run `supabase/migrations/001_bastion.sql`.
-3. Under Authentication, turn on email and password. Create the DM user there. Leave public signup off unless you want strangers to be able to create their own empty estates. They still cannot see yours.
-4. Copy the project URL and the **anon public** key into `config.js`. Do not put the secret service key in that file or anywhere in the site. The anon key is meant to be public. The database rules, not the key, decide who can read.
-5. Merge the pull request when you are ready. The existing Pages workflow publishes this folder with the chronicle. A successful deploy log is the only proof the files are on the web. That still does not mean the database is connected, and it does not clear a browser warning.
-6. Open the tracker, sign in, and create the estate. You are the DM for that estate.
-7. Invite a player from the database with `create_invite`, or add a small invite form later. Give them the one-time code out of band. They sign in with the same email and accept the code.
-8. Set the in-game day, turn length, and opening cash only when you know them. Leave them blank while they are unknown. Unknown cash is not zero.
-9. Keep the old Notion page until you decide the tracker is the record you want. This app does not switch that for you.
+The publishable key is not a JWT. The tracker sends it as the `apikey` header. Before sign-in it is also sent as `Authorization: Bearer`. This project accepts that and treats the caller as anonymous. After sign-in, `Authorization` is the user's access token and `apikey` stays the publishable key.
+
+## What you still do
+
+1. After this change is merged, run `supabase/migrations/002_pin_empty_document_search_path.sql` in the Supabase SQL editor. It only pins `empty_document`'s search path. It does not change the function body. `001` is already applied, so do not run it again.
+2. Open the tracker and sign in with the DM account. The first sign-in creates your estate and makes you its DM. Until you sign in, the page stays **Not connected**.
+3. Add other people in the Supabase dashboard (Authentication → Users). Use the same email they will type here. Public signup will not create accounts.
+4. Sign in as the DM and create an invite code for that email and role. Give them the code yourself. They sign in, then accept the code.
+5. Set the in-game day, turn length, and opening cash only when you know them. Unknown cash is not zero.
+6. Keep the old Notion page until you decide the tracker is the record you want. This app does not switch that for you.
+
+Publishing the site is the existing Pages workflow. A deploy log shows the files are on the web. The github.io host may still show Chrome's "Dangerous site" warning. Do not ask anyone to bypass it, and do not treat the address as ready to share until that warning is gone.
 
 Roles:
 
