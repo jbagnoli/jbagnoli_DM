@@ -29,12 +29,16 @@ function renderGate(model) {
   return `<div class="topline"></div><main class="wrap gate">
     <p class="eyebrow">Bastion tracker</p>
     <h1>Not connected</h1>
-    <p class="muted">Setup is required before this page can be the group's record. Nothing typed here is shared with the table until a database is configured and you save to it.</p>
-    <div class="banner warn"><strong>This is not the group record yet.</strong> A practice sandbox stays in this browser tab. If a save fails later, it is not quietly kept on this device.</div>
+    <p class="muted">${model.configured
+      ? "The shared database is set up. Sign in to open the group record. The practice sandbox is a different, fictional hall and is never called synced."
+      : "Setup is required before this page can be the group's record. Nothing typed here is shared with the table until a database is configured and you save to it."}</p>
+    <div class="banner warn"><strong>This is not the group record yet.</strong> ${model.configured
+      ? "You are not signed in. Opening the practice sandbox does not read or write the shared estate."
+      : "A practice sandbox stays in this browser tab. If a save fails later, it is not quietly kept on this device."}</div>
     <div class="banner"><strong>Browser warning.</strong> This github.io address may still be flagged by Chrome until Google finishes a review. Do not ask anyone to click through that warning.</div>
-    ${model.serviceRole ? `<p class="status" data-tone="error" role="alert">The service role key was refused. Use the anon public key only.</p>` : ""}
+    ${model.serviceRole ? `<p class="status" data-tone="error" role="alert">A secret key was refused. Use the publishable key only.</p>` : ""}
     <div class="actions">
-      <button class="primary" type="button" data-action="sandbox">Open practice sandbox</button>
+      <button class="${model.configured ? "quiet" : "primary"}" type="button" data-action="sandbox">Open practice sandbox</button>
       <a class="linkish" href="../index.html">DM projects</a>
     </div>
     <section class="panel stack" style="margin-top:16px">
@@ -65,7 +69,7 @@ function shellStart(model) {
   ];
   return `<div class="topline"></div><div class="wrap">
     <div class="banner ${practice ? "warn" : "ok"}"><strong>${practice ? "Practice sandbox. Not the group record." : "Connected to the shared record."}</strong>
-    ${practice ? "Closing this tab drops the practice data. It is fictional and is not saved for anyone else." : `Signed in as ${esc(model.email || "a member")}. A failed save is shown as an error and is not stored on this device.`}</div>
+    ${practice ? "Closing this tab drops the practice data. It is fictional, it is not synced, and it is not saved for anyone else." : `Signed in as ${esc(model.email || "a member")}. Changes here are the shared group record. A failed save is shown as an error and is not stored on this device.`}</div>
     <div class="layout">
       <nav class="side stack" aria-label="Sections">${buttons.map(([id, label]) => `<button type="button" data-action="nav" data-view="${id}" ${model.view === id ? `aria-current="page"` : ""}>${label}</button>`).join("")}
         <button type="button" data-action="leave">Leave this record</button>

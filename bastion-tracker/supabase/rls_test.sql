@@ -108,4 +108,15 @@ select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222
 select public._assert(not exists (select 1 from public.estates where id = :'other_id'::uuid), 'reader_saw_other_estate');
 
 reset role;
+select public._assert(
+  exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'empty_document'
+      and p.proconfig @> array['search_path=public']
+  ),
+  'empty_document search_path is not pinned'
+);
 select 'rls_ok' as status;
