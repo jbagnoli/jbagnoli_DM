@@ -2,7 +2,7 @@
 
 Static pages for table projects. The site is plain HTML and CSS: no build step, no server, and no analytics.
 
-Links are relative, so the files work locally and under the GitHub Pages project base `/jbagnoli_DM/`. The shelf is the root `index.html`. The Eternal Concord chronicle is `eternal-concord/index.html`, with its printable PDF beside it.
+Links are relative, so the files work locally and under the GitHub Pages project base `/jbagnoli_DM/`. The shelf is the root `index.html`. The Eternal Concord chronicle is `eternal-concord/index.html`, with its printable PDF beside it. The bastion tracker is `bastion-tracker/`. It is not a shared record until you follow `bastion-tracker/README.md`. The practice sandbox is not that record.
 
 These files do not turn Pages on, and they do not change who can see the repository.
 

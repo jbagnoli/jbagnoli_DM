@@ -23,6 +23,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Check chronicle integrity
         run: python3 scripts/verify_site.py
+      - name: Check bastion rules
+        run: node --test bastion-tracker/js/rules.test.js
+      - name: Check bastion database rules
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql
+          bash bastion-tracker/supabase/test_rls.sh
 
   deploy:
     needs: verify
@@ -42,9 +49,10 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Collect site files
         run: |
-          mkdir -p _site/eternal-concord
+          mkdir -p _site/eternal-concord _site/bastion-tracker
           cp index.html .nojekyll _site/
           cp eternal-concord/index.html eternal-concord/eternal-concord-session-chronicle.pdf _site/eternal-concord/
+          cp -a bastion-tracker/. _site/bastion-tracker/
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

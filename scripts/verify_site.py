@@ -315,8 +315,8 @@ def check_chronicle() -> None:
 def check_shelf() -> None:
     shelf = extract(ROOT / "index.html")
     destinations = [href for href in shelf.hrefs if not href.startswith("#")]
-    if destinations != ["eternal-concord/"]:
-        fail(f"shelf should link only to the chronicle, found {destinations}")
+    if destinations != ["eternal-concord/", "bastion-tracker/"]:
+        fail(f"shelf should link to the chronicle and the bastion tracker, found {destinations}")
 
 
 def main() -> None:
