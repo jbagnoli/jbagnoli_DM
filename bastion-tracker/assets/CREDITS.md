@@ -1,5 +1,10 @@
 # Credits
 
+## Page diagram
+
+- File: `arcane-lattice.svg`
+- Original line drawing made for this tracker. Not taken from a book, a font, or another site.
+
 ## Cover illustration
 
 - Files: `deck-of-many-things-cover.webp` and `deck-of-many-things-cover-phone.webp`

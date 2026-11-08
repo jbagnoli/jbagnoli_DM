@@ -32,11 +32,21 @@ body {
   margin: 0;
   color: var(--ink);
   background-color: var(--bg);
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'><g fill='none' stroke='%238a7358' stroke-width='0.6' opacity='0.28'><path d='M0 24c30-12 54 16 86 2s46 8 74-6'/><path d='M0 78c28-10 60 16 90 2s40 10 70-8'/><path d='M0 124c34-14 62 18 96 0s40 12 64-8'/><path d='M30 0c-8 34 10 62 0 96s6 40-6 64'/><path d='M92 0c-10 30 12 66 0 100s8 36-6 60'/></g></svg>");
-  background-size: 160px 160px;
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("assets/arcane-lattice.svg");
+  background-repeat: repeat;
+  background-size: 840px 960px;
+  background-position: 48px 90px;
+  opacity: 0.08;
+}
+.wrap, .topline, .skip { position: relative; z-index: 1; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button, .linkish {
   display: inline-flex;
@@ -213,6 +223,7 @@ textarea { min-height: 120px; }
 }
 .bottom-nav button { flex-direction: column; gap: 2px; padding: 8px 4px; font-size: 11px; width: auto; background: transparent; }
 @media (max-width: 700px) {
+  body::before { opacity: 0.045; }
   .hero img { height: 156px; }
   .hero-strip img { height: 112px; }
 }
