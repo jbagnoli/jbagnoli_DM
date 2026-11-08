@@ -26,8 +26,22 @@ export function render(model) {
   return `${shellStart(model)}${view(model)}${shellEnd(model)}`;
 }
 
+function coverArt(strip) {
+  return `<figure class="hero${strip ? " hero-strip" : ""}">
+    <picture>
+      <source media="(max-width: 700px)" srcset="assets/deck-of-many-things-cover-phone.webp">
+      <img src="assets/deck-of-many-things-cover.webp" width="1400" height="807" alt="A goblin dealing ornate cards onto a red cloth.">
+    </picture>
+  </figure>`;
+}
+
+function fanNotice() {
+  return `<footer class="fan-notice">Bastion Tracker is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</footer>`;
+}
+
 function renderGate(model) {
   return `<div class="topline"></div><main class="wrap gate">
+    ${coverArt(false)}
     <p class="eyebrow">${mark("card")} Bastion tracker</p>
     <h1>Not connected</h1>
     <hr class="thread">
@@ -57,6 +71,7 @@ function renderGate(model) {
       </form>` : `<p>Sign-in stays off until the owner adds the project URL and anon public key. See the setup notes in the repository.</p>`}
       <p id="status" class="status" role="status" data-tone="${model.error ? "error" : ""}">${esc(model.error || model.notice || "")}</p>
     </section>
+    ${fanNotice()}
   </main>`;
 }
 
@@ -84,6 +99,7 @@ function shellEnd(model) {
   const buttons = [["dashboard", "Home"], ["rooms", "Rooms"], ["people", "People"], ["turn", "Turn"], ["more", "More"]];
   return `</div></div>
     <p id="status" class="status" role="status" data-tone="${model.error ? "error" : ""}">${esc(model.error || model.notice || "")}</p>
+    ${fanNotice()}
     <nav class="bottom-nav" aria-label="Mobile sections">${buttons.map(([id, label]) => navButton(id, label, model.view === id)).join("")}</nav>
   </div>`;
 }
@@ -112,7 +128,7 @@ function renderDashboard(model) {
   const defenders = state.roster.filter((item) => item.category === "defender" && item.status === "active");
   const projects = [...state.projects.filter((item) => item.status === "building"), ...state.walls.squares.filter((item) => item.status === "building")];
   const pending = state.events.filter((item) => item.status === "pending");
-  return `<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="muted">${esc(dayLine(state))} · turn every ${state.clock.cadenceDays} in-game days</p></header>
+  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="muted">${esc(dayLine(state))} · turn every ${state.clock.cadenceDays} in-game days</p></header>
     <div class="stats">
       <div class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></div>
       <div class="stat"><span>Specials</span><strong>${specials.length}/${specialCap(unit.level)}</strong></div>
