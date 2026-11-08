@@ -19,12 +19,13 @@ The publishable key is not a JWT. The tracker sends it as the `apikey` header. B
 
 ## What you still do
 
-1. After this change is merged, run `supabase/migrations/002_pin_empty_document_search_path.sql` in the Supabase SQL editor. It only pins `empty_document`'s search path. It does not change the function body. `001` is already applied, so do not run it again.
+1. After this change is merged, run `supabase/migrations/003_command_parity.sql` in the Supabase SQL editor. Do not run `001` again. `002` only pinned a search path and does not need to be run again. `003` teaches the database the orders the tracker already sends, and new estates start with a turn every 10 in-game days. It does not change a bastion that is already saved. If an existing estate should use 10 days, set that in Settings.
 2. Open the tracker and sign in with the DM account. The first sign-in creates your estate and makes you its DM. Until you sign in, the page stays **Not connected**.
 3. Add other people in the Supabase dashboard (Authentication → Users). Use the same email they will type here. Public signup will not create accounts.
 4. Sign in as the DM and create an invite code for that email and role. Give them the code yourself. They sign in, then accept the code.
-5. Set the in-game day, turn length, and opening cash only when you know them. Unknown cash is not zero.
-6. Keep the old Notion page until you decide the tracker is the record you want. This app does not switch that for you.
+5. Set the in-game day, turn length, and opening cash only when you know them. Unknown cash is not zero. A new estate defaults to a turn every 10 in-game days. Change it in Settings if you want a different length. Settings save as one step.
+6. Defenders already housed, outstanding loans, goods already committed to an order, and an order that is already running are entered from More → Record existing state. That screen does not run a turn or move cash.
+7. Keep the old Notion page until you decide the tracker is the record you want. This app does not switch that for you.
 
 Publishing the site is the existing Pages workflow. A deploy log shows the files are on the web. The github.io host may still show Chrome's "Dangerous site" warning. Do not ask anyone to bypass it, and do not treat the address as ready to share until that warning is gone.
 

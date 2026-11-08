@@ -27,5 +27,7 @@ createdb -h 127.0.0.1 -p "$PORT" bastion_rls_test
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f harness.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/001_bastion.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/002_pin_empty_document_search_path.sql
+psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/003_command_parity.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f rls_test.sql
+psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f command_test.sql
 echo "database isolation tests passed"

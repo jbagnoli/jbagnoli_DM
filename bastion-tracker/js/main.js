@@ -75,13 +75,6 @@ function commit(command) {
   else fail(new Error("Not connected. Setup is required."));
 }
 
-async function commitAll(commands) {
-  for (const command of commands) {
-    await commit(command);
-    if (model.error) return;
-  }
-}
-
 function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
@@ -150,12 +143,52 @@ app.addEventListener("submit", async (event) => {
       commit({ type: "record_goods", name: data.name, standardGp: Number(data.standardGp), unitId: model.state.units[0].id });
     } else if (form.id === "settings") {
       const capabilities = [...form.querySelectorAll("input[name=cap]:checked")].map((input) => input.value);
-      await commitAll([
-        { type: "set_settings", name: data.name, owner: data.owner, unitId: model.state.units[0].id, cadenceDays: Number(data.cadenceDays) },
-        { type: "set_clock", label: data.label, ordinal: data.ordinal === "" ? null : Number(data.ordinal) },
-        { type: "raise_level", unitId: model.state.units[0].id, level: Number(data.level) },
-        { type: "set_capabilities", unitId: model.state.units[0].id, capabilities },
-      ]);
+      commit({
+        type: "save_settings",
+        name: data.name,
+        owner: data.owner,
+        unitId: model.state.units[0].id,
+        cadenceDays: Number(data.cadenceDays),
+        label: data.label,
+        ordinal: data.ordinal === "" ? null : Number(data.ordinal),
+        level: Number(data.level),
+        grantReplacements: data.grantReplacements === "on",
+        capabilities,
+      });
+    } else if (form.id === "record-defenders") {
+      commit({
+        type: "record_defenders",
+        facilityId: data.facilityId,
+        count: Number(data.count),
+        names: String(data.names || "").split(/[\n,]/).map((name) => name.trim()).filter(Boolean),
+      });
+    } else if (form.id === "record-loan") {
+      commit({
+        type: "set_loan",
+        loanId: data.loanId || null,
+        creditor: data.creditor,
+        amountGp: data.amountGp === "" ? null : Number(data.amountGp),
+        note: data.note,
+        remove: data.remove === "on",
+      });
+    } else if (form.id === "record-goods") {
+      commit({
+        type: "reserve_goods",
+        lotId: data.lotId || null,
+        name: data.name,
+        standardGp: Number(data.standardGp),
+        note: data.note,
+        unitId: model.state.units[0].id,
+      });
+    } else if (form.id === "record-order") {
+      const [facilityId, suborder] = String(data.orderKey || "").split("|");
+      commit({
+        type: "record_order",
+        facilityId,
+        suborder,
+        startedTurn: data.startedTurn === "" ? null : Number(data.startedTurn),
+        note: data.note,
+      });
     } else if (form.id === "advance") {
       commit({ type: "advance_days", days: Number(data.days) });
     } else if (form.id === "split") {

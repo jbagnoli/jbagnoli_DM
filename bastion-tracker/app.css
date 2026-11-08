@@ -149,7 +149,8 @@ a { color: var(--crimson); }
   border-radius: 10px;
   pointer-events: none;
 }
-fieldset { margin: 0; }
+fieldset { margin: 0; min-width: 0; }
+.stack fieldset { display: grid; gap: 10px; }
 legend {
   display: inline-flex;
   align-items: center;
