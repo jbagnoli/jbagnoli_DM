@@ -1,4 +1,5 @@
 import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, specialById, specialCap } from "./catalog.js";
+import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
 export function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -27,8 +28,9 @@ export function render(model) {
 
 function renderGate(model) {
   return `<div class="topline"></div><main class="wrap gate">
-    <p class="eyebrow">Bastion tracker</p>
+    <p class="eyebrow">${mark("card")} Bastion tracker</p>
     <h1>Not connected</h1>
+    <hr class="thread">
     <p class="muted">${model.configured
       ? "The shared database is set up. Sign in to open the group record. The practice sandbox is a different, fictional hall and is never called synced."
       : "Setup is required before this page can be the group's record. Nothing typed here is shared with the table until a database is configured and you save to it."}</p>
@@ -71,7 +73,7 @@ function shellStart(model) {
     <div class="banner ${practice ? "warn" : "ok"}"><strong>${practice ? "Practice sandbox. Not the group record." : "Connected to the shared record."}</strong>
     ${practice ? "Closing this tab drops the practice data. It is fictional, it is not synced, and it is not saved for anyone else." : `Signed in as ${esc(model.email || "a member")}. Changes here are the shared group record. A failed save is shown as an error and is not stored on this device.`}</div>
     <div class="layout">
-      <nav class="side stack" aria-label="Sections">${buttons.map(([id, label]) => `<button type="button" data-action="nav" data-view="${id}" ${model.view === id ? `aria-current="page"` : ""}>${label}</button>`).join("")}
+      <nav class="side stack" aria-label="Sections">${buttons.map(([id, label]) => navButton(id, label, model.view === id)).join("")}
         <button type="button" data-action="leave">Leave this record</button>
         <a href="../index.html">DM projects</a>
       </nav>
@@ -82,8 +84,12 @@ function shellEnd(model) {
   const buttons = [["dashboard", "Home"], ["rooms", "Rooms"], ["people", "People"], ["turn", "Turn"], ["more", "More"]];
   return `</div></div>
     <p id="status" class="status" role="status" data-tone="${model.error ? "error" : ""}">${esc(model.error || model.notice || "")}</p>
-    <nav class="bottom-nav" aria-label="Mobile sections">${buttons.map(([id, label]) => `<button type="button" data-action="nav" data-view="${id}" ${model.view === id ? `aria-current="page"` : ""}>${label}</button>`).join("")}</nav>
+    <nav class="bottom-nav" aria-label="Mobile sections">${buttons.map(([id, label]) => navButton(id, label, model.view === id)).join("")}</nav>
   </div>`;
+}
+
+function navButton(id, label, current) {
+  return `<button type="button" data-action="nav" data-view="${id}" ${current ? 'aria-current="page"' : ""}>${mark(SECTION_MARK[id] || "star")}<span>${label}</span></button>`;
 }
 
 function view(model) {
@@ -106,7 +112,7 @@ function renderDashboard(model) {
   const defenders = state.roster.filter((item) => item.category === "defender" && item.status === "active");
   const projects = [...state.projects.filter((item) => item.status === "building"), ...state.walls.squares.filter((item) => item.status === "building")];
   const pending = state.events.filter((item) => item.status === "pending");
-  return `<header><p class="eyebrow">Estate</p><h1>${esc(state.name)}</h1><p class="muted">${esc(dayLine(state))} · turn every ${state.clock.cadenceDays} in-game days</p></header>
+  return `<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="muted">${esc(dayLine(state))} · turn every ${state.clock.cadenceDays} in-game days</p></header>
     <div class="stats">
       <div class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></div>
       <div class="stat"><span>Specials</span><strong>${specials.length}/${specialCap(unit.level)}</strong></div>
@@ -138,8 +144,8 @@ function renderRooms(model) {
     if (full) reasons.push("cap is full");
     return { spec, reasons };
   });
-  return `<h2>Rooms</h2>
-    <div class="list">${state.facilities.map((item) => `<article class="facility card"><h3>${esc(item.name)}</h3><p class="muted">${esc(item.kind)} · ${esc(item.space)} · ${esc(item.status)} · ${esc(item.acquired || "")}</p><p>${esc(specialById(item.catalogId)?.hint || "Basic room. No orders.")}</p></article>`).join("") || `<p class="muted">No rooms yet.</p>`}</div>
+  return `<h2 class="with-mark">${mark("card")} Rooms</h2>
+    <div class="list">${state.facilities.map((item) => `<article class="facility card"><h3 class="with-mark">${facilityMark(specialById(item.catalogId))}<span>${esc(item.name)}</span></h3><p class="muted">${esc(item.kind)} · ${esc(item.space)} · ${esc(item.status)} · ${esc(item.acquired || "")}</p><p>${esc(specialById(item.catalogId)?.hint || "Basic room. No orders.")}</p></article>`).join("") || `<p class="muted">No rooms yet.</p>`}</div>
     <section class="panel stack" style="margin-top:14px"><h3>Add a special facility</h3>
       <form id="add-special" class="stack">
         <label>Facility <select id="catalogId" name="catalogId">${options.map(({ spec, reasons }) => `<option value="${spec.id}" ${reasons.length ? "disabled" : ""}>${esc(spec.name)} · level ${spec.level}${reasons.length ? ` (${esc(reasons.join(", "))})` : ""}</option>`).join("")}</select></label>
@@ -160,7 +166,7 @@ function renderRooms(model) {
 
 function renderPeople(model) {
   const people = model.state.roster;
-  return `<h2>People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion.</p>
+  return `<h2 class="with-mark">${mark("pair")} People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion.</p>
     <div class="list">${people.map((person) => `<article class="person card"><h3>${esc(person.name)}</h3><p><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span></p>${person.summary ? `<p>${esc(person.summary)}</p>` : `<p>${esc(person.role)}</p>`}${person.link ? `<p><a href="${esc(person.link)}">External note</a></p>` : ""}</article>`).join("") || `<p class="muted">No one is named yet.</p>`}</div>
     <form id="person" class="panel stack" style="margin-top:14px">
       <h3>Add someone</h3>
@@ -177,7 +183,7 @@ function renderTurn(model) {
   const state = model.state;
   const specials = state.facilities.filter((item) => item.kind === "special" && item.status !== "archived");
   const pending = state.events.find((item) => item.status === "pending");
-  return `<h2>Turn</h2>
+  return `<h2 class="with-mark">${mark("cycle")} Turn</h2>
     <form id="turn" class="panel stack">
       <label>Owner unit <select id="turn-unit" name="unitId">${state.units.map((unit) => `<option value="${unit.id}">${esc(unit.name)} · level ${unit.level}</option>`).join("")}</select></label>
       <label>Where is the owner? <select id="presence" name="presence"><option value="present">Here</option><option value="absent_with_contact">Away, but can send word</option><option value="absent">Away, no message</option></select></label>
@@ -186,7 +192,7 @@ function renderTurn(model) {
       <p class="muted">Maintain cannot share the turn with other orders. Being away without a message forces Maintain. Task lengths stay the facility's own days, not the turn length.</p>
       ${specials.map((facility) => {
         const spec = specialById(facility.catalogId);
-        return `<fieldset><legend>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</legend>
+        return `<fieldset><legend>${facilityMark(spec)}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
           <label>Order <select name="order-${facility.id}"><option value="">No order</option>${(spec?.subs || []).map((sub) => `<option value="${sub.id}">${esc(sub.label)}${sub.days == null ? "" : ` · ${sub.days} days`}</option>`).join("")}</select></label>
           <label>How many, if the order asks <input name="count-${facility.id}" inputmode="numeric" placeholder="1 to 4 for defenders"></label>
         </fieldset>`;
@@ -207,7 +213,7 @@ function renderTurn(model) {
 
 function renderMoney(model) {
   const state = model.state;
-  return `<h2>Treasury</h2>
+  return `<h2 class="with-mark">${mark("coin")} Treasury</h2>
     <p class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></p>
     <form id="finance" class="panel stack"><label>Opening or corrected cash, in GP <input id="cash" name="cashGp" inputmode="numeric" placeholder="Leave blank to keep unknown"></label><button class="primary" type="submit">Set cash</button><p class="muted">Unknown stays unknown. It is not treated as zero, and nothing is spent until you set it.</p></form>
     <h3>Goods</h3>
@@ -219,7 +225,7 @@ function renderMoney(model) {
 
 function renderJournal(model) {
   const lines = model.state.audit.slice().reverse().slice(0, 40);
-  return `<h2>Journal</h2><p class="muted">Each saved change is listed. Overrides keep their reason.</p>
+  return `<h2 class="with-mark">${mark("thread")} Journal</h2><p class="muted">Each saved change is listed. Overrides keep their reason.</p>
     <ol>${lines.map((entry) => `<li><strong>${esc(entry.summary)}</strong><br><span class="muted">${esc(entry.actorRole || "")} ${entry.reason ? `· ${esc(entry.reason)}` : ""}</span></li>`).join("") || "<li>No entries yet.</li>"}</ol>
     <button type="button" data-action="export">Download JSON backup</button>`;
 }
@@ -227,7 +233,7 @@ function renderJournal(model) {
 function renderSettings(model) {
   const state = model.state;
   const unit = state.units[0];
-  return `<h2>Settings</h2>
+  return `<h2 class="with-mark">${mark("key")} Settings</h2>
     <form id="settings" class="panel stack">
       <label>Estate name <input id="estate-name" name="name" value="${esc(state.name)}" maxlength="80"></label>
       <label>Owner label <input id="owner" name="owner" value="${esc(unit.owner)}" maxlength="120"></label>
@@ -255,7 +261,7 @@ function renderSettings(model) {
 }
 
 function renderImport() {
-  return `<h2>Review a private file</h2>
+  return `<h2 class="with-mark">${mark("card")} Review a private file</h2>
     <p class="muted">Paste a review file on this device. Turns, dates, loans, and goods are refused. Facilities and named people can be accepted one at a time, and only into the record you have open. Nothing in the file is bundled with the site.</p>
     <form id="review" class="stack">
       <label>Review JSON <textarea id="review-text" name="review"></textarea></label>
@@ -265,7 +271,7 @@ function renderImport() {
 }
 
 function renderHelp() {
-  return `<h2>What the tracker does</h2>
+  return `<h2 class="with-mark">${mark("star")} What the tracker does</h2>
     <div class="panel"><h3>Worked out for you</h3><ul>
       <li>Special facility cap, prerequisites, and the facilities that can repeat.</li>
       <li>One replacement each time a level is gained after tracking starts.</li>
@@ -285,13 +291,13 @@ function renderHelp() {
 }
 
 function renderMore() {
-  return `<h2>More</h2><div class="stack">
-    <button type="button" data-action="nav" data-view="money">Treasury</button>
-    <button type="button" data-action="nav" data-view="journal">Journal and backup</button>
-    <button type="button" data-action="nav" data-view="settings">Settings</button>
-    <button type="button" data-action="nav" data-view="import">Review import</button>
-    <button type="button" data-action="nav" data-view="help">What is automatic</button>
-    <button type="button" data-action="export">Download JSON backup</button>
+  return `<h2 class="with-mark">${mark("pips")} More</h2><div class="stack">
+    <button type="button" data-action="nav" data-view="money">${mark("coin")}<span>Treasury</span></button>
+    <button type="button" data-action="nav" data-view="journal">${mark("thread")}<span>Journal and backup</span></button>
+    <button type="button" data-action="nav" data-view="settings">${mark("key")}<span>Settings</span></button>
+    <button type="button" data-action="nav" data-view="import">${mark("card")}<span>Review import</span></button>
+    <button type="button" data-action="nav" data-view="help">${mark("star")}<span>What is automatic</span></button>
+    <button type="button" data-action="export">${mark("seal")}<span>Download JSON backup</span></button>
   </div>`;
 }
 
