@@ -1,0 +1,6 @@
+{
+  "name": "bastion-tracker",
+  "private": true,
+  "type": "module",
+  "description": "Static bastion tracker. No install step and no paid packages."
+}
