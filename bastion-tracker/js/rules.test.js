@@ -352,6 +352,28 @@ test("DM can record defenders, loans, committed goods, and an order already runn
   assert.equal(state.finance.cashKnown, false);
 });
 
+test("blank or zero goods are refused and the DM can remove a free lot", () => {
+  const state = party();
+  const cash = state.finance.cashGp;
+  assert.throws(() => apply(state, { type: "record_goods", name: "   ", standardGp: 10 }), (error) => error.code === "name_required");
+  assert.throws(() => apply(state, { type: "record_goods", name: "Wool", standardGp: 0 }), (error) => error.code === "bad_amount");
+  assert.throws(() => apply(state, { type: "reserve_goods", name: "", standardGp: 500 }), (error) => error.code === "name_required");
+  assert.equal(state.goods.length, 0);
+  assert.equal(state.finance.cashGp, cash);
+  let saved = apply(state, { type: "record_goods", name: " Wool bolts ", standardGp: 200 }).state;
+  assert.equal(saved.goods[0].name, "Wool bolts");
+  assert.equal(saved.finance.cashGp, cash);
+  const removed = apply(saved, { type: "remove_goods", lotId: saved.goods[0].id }).state;
+  assert.equal(removed.goods.length, 0);
+  assert.equal(removed.finance.cashGp, cash);
+  assert.equal(removed.finance.cashKnown, false);
+  assert.equal(removed.audit.at(-1).type, "remove_goods");
+  saved = apply(saved, { type: "reserve_goods", lotId: saved.goods[0].id, standardGp: 50 }).state;
+  assert.throws(() => apply(saved, { type: "remove_goods", lotId: saved.goods[0].id }), (error) => error.code === "goods_committed");
+  assert.equal(saved.goods.length, 1);
+  assert.throws(() => apply(saved, { type: "remove_goods", actorRole: "editor", lotId: saved.goods[0].id }), (error) => error.code === "forbidden");
+});
+
 test("settings and the DM record screen are reachable", () => {
   const state = emptyEstate({ name: "Unnamed bastion" });
   const settings = render({ mode: "sandbox", view: "settings", state, error: "", notice: "", configured: true, serviceRole: false });
@@ -370,7 +392,7 @@ test("settings and the DM record screen are reachable", () => {
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/003_command_parity.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/004_remove_blank_goods.sql"), "utf8");
   const cases = [...rules.matchAll(/case "([a-z_]+)":/g)].map((match) => match[1]);
   assert.equal(new Set(cases).size, cases.length);
   const block = migration.match(/function public\.handled_command_types\(\)[\s\S]*?array\[([\s\S]*?)\]::text\[\]/);

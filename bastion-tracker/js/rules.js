@@ -39,6 +39,7 @@ const DM_ONLY = new Set([
   "set_loan",
   "reserve_goods",
   "record_order",
+  "remove_goods",
 ]);
 
 export function emptyEstate(options = {}) {
@@ -307,6 +308,8 @@ export function apply(input, command) {
       return reserveGoods(state, command);
     case "record_order":
       return recordOrder(state, command);
+    case "remove_goods":
+      return removeGoods(state, command);
     default:
       throw new RuleError("unsupported", "That action is not available.");
   }
@@ -705,9 +708,11 @@ function settleSale(state, task, command) {
 
 function settlePurchase(state, task, command) {
   if (task.settled) return { taskId: task.id, replay: true };
+  const boughtName = goodsLabel(task.goodsName);
+  goodsPrice(task.standardGp);
   state.goods.push({
     id: nid(state, "good"),
-    name: task.goodsName,
+    name: boughtName,
     standardGp: task.standardGp,
     reservedGp: 0,
     status: "on_hand",
@@ -817,9 +822,22 @@ function setLoan(state, command) {
   return finish(state, command, { loanId: loan.id }, `Recorded a loan of ${amount} GP from ${loan.creditor}. Cash was not changed.`);
 }
 
+function goodsPrice(amount) {
+  const value = Number(amount);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new RuleError("bad_amount", "Goods need a list price above zero, in whole GP.");
+  }
+  return value;
+}
+
+function goodsLabel(name) {
+  const cleaned = String(name ?? "").trim();
+  if (!cleaned) throw new RuleError("name_required", "Goods need a name.");
+  return cleaned.slice(0, 80);
+}
+
 function reserveGoods(state, command) {
-  const amount = Number(command.standardGp);
-  if (!Number.isInteger(amount) || amount < 1) throw new RuleError("bad_amount", "Committed goods need a list price in whole GP.");
+  const amount = goodsPrice(command.standardGp);
   const note = String(command.note || "Committed to an order already underway. This did not charge or pay anyone.").slice(0, 240);
   if (command.lotId) {
     const lot = state.goods.find((item) => item.id === command.lotId && item.status === "on_hand");
@@ -830,9 +848,10 @@ function reserveGoods(state, command) {
     lot.commitment = note;
     return finish(state, command, { lotId: lot.id, reservedGp: lot.reservedGp }, `Marked ${amount} GP of ${lot.name} as already committed. Cash was not changed.`);
   }
+  const name = goodsLabel(command.name);
   const lot = {
     id: nid(state, "good"),
-    name: String(command.name || "Goods").slice(0, 80),
+    name,
     standardGp: amount,
     reservedGp: amount,
     status: "on_hand",
@@ -842,6 +861,27 @@ function reserveGoods(state, command) {
   };
   state.goods.push(lot);
   return finish(state, command, { lotId: lot.id, reservedGp: amount }, `Recorded ${amount} GP of ${lot.name} as already committed. Cash was not changed.`);
+}
+
+function goodsHeld(state, lot) {
+  if ((lot.reservedGp || 0) > 0) return true;
+  const openOrder = (state.orders || []).some((order) => order.lotId === lot.id && !["resolved", "cancelled"].includes(order.status));
+  const openTask = (state.tasks || []).some((task) => task.lotId === lot.id && task.status === "open");
+  return openOrder || openTask;
+}
+
+function removeGoods(state, command) {
+  const lot = state.goods.find((item) => item.id === command.lotId);
+  if (!lot) throw new RuleError("missing_goods", "Those goods are not on the record.");
+  if (goodsHeld(state, lot)) {
+    throw new RuleError("goods_committed", "Those goods are still reserved or tied to an order that has not finished. Release that link before removing them. Cash was not changed.");
+  }
+  const cashGp = state.finance.cashGp;
+  const cashKnown = state.finance.cashKnown;
+  state.goods = state.goods.filter((item) => item.id !== lot.id);
+  state.finance.cashGp = cashGp;
+  state.finance.cashKnown = cashKnown;
+  return finish(state, command, { lotId: lot.id, removed: true }, `Removed ${lot.name || "unnamed goods"}. Cash was not changed.`);
 }
 
 function recordOrder(state, command) {
@@ -874,11 +914,11 @@ function recordOrder(state, command) {
 }
 
 function recordGoods(state, command) {
-  const standardGp = Number(command.standardGp);
-  if (!Number.isInteger(standardGp) || standardGp < 0) throw new RuleError("bad_amount", "Goods need a list price in whole GP.");
+  const standardGp = goodsPrice(command.standardGp);
+  const name = goodsLabel(command.name);
   const lot = {
     id: nid(state, "good"),
-    name: String(command.name || "Goods").slice(0, 80),
+    name,
     standardGp,
     reservedGp: 0,
     status: "on_hand",
@@ -1014,7 +1054,7 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
       auto: "storehouse_buy",
       unitId: unit.id,
       orderId: order.id,
-      goodsName: String(request.goodsName || "Goods").slice(0, 80),
+      goodsName: request.goodsName == null ? "Goods" : goodsLabel(request.goodsName),
       standardGp,
       dueOrdinal: dueDay(state, 7),
     });

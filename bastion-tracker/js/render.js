@@ -228,14 +228,37 @@ function renderTurn(model) {
     <section class="panel" style="margin-top:14px"><h3>Recent turns</h3><ul>${state.turns.slice(-6).reverse().map((turn) => `<li>${esc(turn.mode)} · ${esc(turn.presence)} · day ${turn.day ?? "unknown"}</li>`).join("") || "<li>None yet.</li>"}</ul></section>`;
 }
 
+function formAlert(id, message) {
+  return `<p id="${id}" class="status" ${message ? 'role="alert" data-tone="error"' : ""}>${esc(message)}</p>`;
+}
+
+function goodsRows(model) {
+  const state = model.state;
+  if (!state.goods.length) return "<li>No goods recorded.</li>";
+  return state.goods.map((lot) => {
+    const label = lot.name?.trim() ? lot.name : "Unnamed goods";
+    const confirming = model.confirmGoodsId === lot.id;
+    const noteId = `remove-note-${lot.id}`;
+    return `<li class="goods-row"><span>${esc(label)} · list ${lot.standardGp} GP · ${esc(lot.status)}${lot.reservedGp ? ` · reserved ${lot.reservedGp}` : ""}</span>${confirming
+      ? `<span class="confirm-row"><span id="${esc(noteId)}">Remove this entry? Only the DM can do this, and cash will not change.</span><button type="button" data-action="remove-goods" data-id="${esc(lot.id)}" aria-describedby="${esc(noteId)}">Remove these goods</button><button type="button" data-action="cancel-remove-goods">Cancel</button></span>`
+      : `<button type="button" data-action="confirm-remove-goods" data-id="${esc(lot.id)}">Remove</button>`}</li>`;
+  }).join("");
+}
+
 function renderMoney(model) {
   const state = model.state;
+  const goodsError = model.formError?.form === "goods" ? model.formError.message : "";
   return `<h2 class="with-mark">${mark("coin")} Treasury</h2>
     <p class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></p>
     <form id="finance" class="panel stack"><label>Opening or corrected cash, in GP <input id="cash" name="cashGp" inputmode="numeric" placeholder="Leave blank to keep unknown"></label><button class="primary" type="submit">Set cash</button><p class="muted">Unknown stays unknown. It is not treated as zero, and nothing is spent until you set it.</p></form>
     <h3>Goods</h3>
-    <ul>${state.goods.map((lot) => `<li>${esc(lot.name)} · list ${lot.standardGp} GP · ${esc(lot.status)}${lot.reservedGp ? ` · reserved ${lot.reservedGp}` : ""}</li>`).join("") || "<li>No goods recorded.</li>"}</ul>
-    <form id="goods" class="stack"><label>Goods already on hand <input id="goods-name" name="name"></label><label>List price GP <input id="goods-gp" name="standardGp" inputmode="numeric"></label><button type="submit">Record goods without charging</button></form>
+    <ul class="stack">${goodsRows(model)}</ul>
+    <form id="goods" class="stack" novalidate>
+      <label for="goods-name">Goods already on hand <input id="goods-name" name="name" required maxlength="80" aria-required="true" aria-invalid="${goodsError ? "true" : "false"}" aria-describedby="goods-error"></label>
+      <label for="goods-gp">List price in GP <input id="goods-gp" name="standardGp" inputmode="numeric" required aria-required="true" aria-invalid="${goodsError ? "true" : "false"}" aria-describedby="goods-error"></label>
+      ${formAlert("goods-error", goodsError)}
+      <button class="primary" type="submit">Record goods without charging</button>
+    </form>
     <h3>Ledger</h3>
     <ul>${state.ledger.slice(-8).reverse().map((entry) => `<li>${entry.gp} GP · ${esc(entry.reason)}</li>`).join("") || "<li>No payments yet.</li>"}</ul>`;
 }
@@ -317,14 +340,15 @@ function renderRecord(model) {
       <button class="primary" type="submit">Save loan</button>
       <p class="muted">Saving a loan does not change the cash balance.</p>
     </form>
-    <form id="record-goods" class="panel stack" style="margin-top:14px">
+    <form id="record-goods" class="panel stack" style="margin-top:14px" novalidate>
       <h3>Goods already committed</h3>
-      <label>Existing lot, or a new one <select id="commit-lot" name="lotId"><option value="">New goods</option>${state.goods.filter((lot) => lot.status === "on_hand").map((lot) => `<option value="${esc(lot.id)}">${esc(lot.name)} · ${lot.standardGp} GP list${lot.reservedGp ? `, ${lot.reservedGp} reserved` : ""}</option>`).join("")}</select></label>
-      <label>Name, for new goods <input id="commit-name" name="name" maxlength="80" placeholder="Wool bolts"></label>
-      <label>List price committed, in GP <input id="commit-gp" name="standardGp" inputmode="numeric" placeholder="500"></label>
-      <label>What the goods are tied up in <input id="commit-note" name="note" maxlength="240" placeholder="Trade sell already underway"></label>
+      <label for="commit-lot">Existing lot, or a new one <select id="commit-lot" name="lotId"><option value="">New goods</option>${state.goods.filter((lot) => lot.status === "on_hand").map((lot) => `<option value="${esc(lot.id)}">${esc(lot.name?.trim() ? lot.name : "Unnamed goods")} · ${lot.standardGp} GP list${lot.reservedGp ? `, ${lot.reservedGp} reserved` : ""}</option>`).join("")}</select></label>
+      <label for="commit-name">Name, for new goods <input id="commit-name" name="name" maxlength="80" placeholder="Wool bolts" aria-describedby="commit-goods-error"></label>
+      <label for="commit-gp">List price committed, in GP <input id="commit-gp" name="standardGp" inputmode="numeric" required aria-required="true" placeholder="500" aria-invalid="${model.formError?.form === "record-goods" ? "true" : "false"}" aria-describedby="commit-goods-error"></label>
+      <label for="commit-note">What the goods are tied up in <input id="commit-note" name="note" maxlength="240" placeholder="Trade sell already underway"></label>
+      ${formAlert("commit-goods-error", model.formError?.form === "record-goods" ? model.formError.message : "")}
       <button class="primary" type="submit">Mark goods committed</button>
-      <p class="muted">Example: 500 GP of goods already in a sell order. This reserves them. It does not pay the sale.</p>
+      <p class="muted">Example: 500 GP of goods already in a sell order. A new lot needs a name and a price above zero. This reserves them. It does not pay the sale.</p>
     </form>
     <form id="record-order" class="panel stack" style="margin-top:14px">
       <h3>Order already underway</h3>

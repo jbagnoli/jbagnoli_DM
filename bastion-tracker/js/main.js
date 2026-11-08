@@ -18,6 +18,8 @@ const model = {
   token: "",
   estateId: "",
   review: [],
+  formError: null,
+  confirmGoodsId: "",
 };
 
 function paint() {
@@ -39,10 +41,21 @@ function fail(error) {
   paint();
 }
 
+function rejectGoods(form, fieldId, message) {
+  model.formError = { form, message };
+  fail(new RuleError(fieldId.includes("name") ? "name_required" : "bad_amount", message));
+  document.getElementById(fieldId)?.focus();
+}
+
+function positiveGoods(amount) {
+  return Number.isInteger(amount) && amount >= 1;
+}
+
 function localApply(command) {
   const out = apply(model.state, { ...command, expectedRevision: model.state.revision, actorRole: "dm" });
   model.state = out.state;
   model.error = "";
+  model.formError = null;
   model.notice = out.replay ? "That action was already saved in this practice session." : "Updated the practice session only.";
   paint();
 }
@@ -53,6 +66,7 @@ async function remoteApply(command) {
     const result = await applyCommand(BASTION_CONFIG, model.token, model.estateId, model.state.revision, key, command);
     if (result?.document) model.state = result.document;
     model.error = "";
+    model.formError = null;
     model.notice = result?.replay ? "The shared record already had this action." : "Saved to the shared record.";
     paint();
   } catch (error) {
@@ -79,7 +93,7 @@ function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
-app.addEventListener("click", (event) => {
+app.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -111,6 +125,23 @@ app.addEventListener("click", (event) => {
     link.click();
     URL.revokeObjectURL(link.href);
   }
+  if (action === "confirm-remove-goods") {
+    model.confirmGoodsId = button.dataset.id;
+    model.error = "";
+    paint();
+  }
+  if (action === "cancel-remove-goods") {
+    model.confirmGoodsId = "";
+    paint();
+  }
+  if (action === "remove-goods") {
+    try {
+      await commit({ type: "remove_goods", lotId: button.dataset.id });
+      if (!model.error) model.confirmGoodsId = "";
+    } catch (error) {
+      fail(error);
+    }
+  }
   if (action === "accept-review") {
     const item = model.review[Number(button.dataset.index)];
     if (!item || item.blocked) return;
@@ -140,7 +171,15 @@ app.addEventListener("submit", async (event) => {
     } else if (form.id === "finance") {
       commit({ type: "set_finance", cashGp: data.cashGp === "" ? null : Number(data.cashGp) });
     } else if (form.id === "goods") {
-      commit({ type: "record_goods", name: data.name, standardGp: Number(data.standardGp), unitId: model.state.units[0].id });
+      const amount = Number(data.standardGp);
+      if (!String(data.name || "").trim()) {
+        rejectGoods("goods", "goods-name", "Goods need a name.");
+      } else if (!positiveGoods(amount)) {
+        rejectGoods("goods", "goods-gp", "Goods need a list price above zero, in whole GP.");
+      } else {
+        model.formError = null;
+        commit({ type: "record_goods", name: data.name, standardGp: amount, unitId: model.state.units[0].id });
+      }
     } else if (form.id === "settings") {
       const capabilities = [...form.querySelectorAll("input[name=cap]:checked")].map((input) => input.value);
       commit({
@@ -172,14 +211,23 @@ app.addEventListener("submit", async (event) => {
         remove: data.remove === "on",
       });
     } else if (form.id === "record-goods") {
-      commit({
-        type: "reserve_goods",
-        lotId: data.lotId || null,
-        name: data.name,
-        standardGp: Number(data.standardGp),
-        note: data.note,
-        unitId: model.state.units[0].id,
-      });
+      const amount = Number(data.standardGp);
+      const creating = !data.lotId;
+      if (creating && !String(data.name || "").trim()) {
+        rejectGoods("record-goods", "commit-name", "Goods need a name.");
+      } else if (!positiveGoods(amount)) {
+        rejectGoods("record-goods", "commit-gp", "Goods need a list price above zero, in whole GP.");
+      } else {
+        model.formError = null;
+        commit({
+          type: "reserve_goods",
+          lotId: data.lotId || null,
+          name: data.name,
+          standardGp: amount,
+          note: data.note,
+          unitId: model.state.units[0].id,
+        });
+      }
     } else if (form.id === "record-order") {
       const [facilityId, suborder] = String(data.orderKey || "").split("|");
       commit({
