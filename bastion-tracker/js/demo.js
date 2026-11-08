@@ -14,7 +14,6 @@ export function practiceState() {
   };
   go({ type: "set_clock", ordinal: 12, label: "A spring day on the practice calendar" });
   go({ type: "set_finance", cashGp: 1300 });
-  go({ type: "set_settings", cadenceDays: 7 });
   go({ type: "add_basic", unitId: "unit-party", roomId: "bedroom", space: "cramped", starter: true });
   go({ type: "add_basic", unitId: "unit-party", roomId: "kitchen", space: "roomy", starter: true });
   go({ type: "add_special", unitId: "unit-party", catalogId: "barrack" });

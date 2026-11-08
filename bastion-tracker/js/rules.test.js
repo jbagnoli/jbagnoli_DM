@@ -246,9 +246,151 @@ test("review import does not finish historic turns or invent balances", () => {
   assert.throws(() => apply(state, { type: "import_accept", item: { kind: "turn", status: "recorded; DM reconciliation pending", outcome: "" } }), (error) => error.code === "import_blocked");
   assert.throws(() => apply(state, { type: "import_accept", item: { kind: "finance" } }), (error) => error.code === "import_blocked");
   assert.throws(() => apply(state, { type: "import_accept", item: { kind: "date" } }), (error) => error.code === "import_blocked");
+  assert.throws(() => apply(state, { type: "import_accept", item: { kind: "loan" } }), (error) => error.code === "import_blocked");
+  assert.throws(() => apply(state, { type: "import_accept", item: { kind: "goods" } }), (error) => error.code === "import_blocked");
+  assert.throws(() => apply(state, { type: "import_accept", item: { kind: "defender" } }), (error) => error.code === "import_blocked");
   const imported = apply(state, { type: "import_accept", item: { kind: "facility", facilityKind: "basic", roomId: "storage", space: "roomy" } }).state;
   assert.equal(imported.facilities[0].acquired, "inherited");
   assert.equal(imported.finance.cashKnown, false);
+  const withSpecial = apply(imported, { type: "import_accept", item: { kind: "facility", catalogId: "library" } }).state;
+  assert.equal(withSpecial.facilities.at(-1).acquired, "inherited");
+  assert.equal(withSpecial.facilities.at(-1).name, "Library");
+  const withRoster = apply(withSpecial, {
+    type: "import_accept",
+    item: { kind: "roster", person: { name: "Bram Holt", category: "household", role: "Steward", unitId: "unit-party" } },
+  }).state;
+  assert.equal(withRoster.roster.at(-1).name, "Bram Holt");
+  assert.equal(withRoster.revision, state.revision + 3);
+});
+
+test("a fresh estate uses a 10-day turn", () => {
+  const state = emptyEstate({ name: "Unnamed bastion" });
+  assert.equal(state.clock.cadenceDays, 10);
+  assert.equal(state.clock.ordinal, null);
+  const html = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(html, /In-game day unknown · turn every 10 in-game days/);
+});
+
+test("setting a level directly does not grant replacements", () => {
+  let state = party();
+  state = add(state, "barrack");
+  state = add(state, "storehouse");
+  state = apply(state, { type: "raise_level", unitId: "unit-party", level: 6 }).state;
+  assert.equal(state.units[0].replacementBank, 1);
+  const direct = apply(state, { type: "set_level", unitId: "unit-party", level: 9 }).state;
+  assert.equal(direct.units[0].level, 9);
+  assert.equal(direct.units[0].replacementBank, 1);
+  const granted = apply(state, { type: "set_level", unitId: "unit-party", level: 9, grantReplacements: true }).state;
+  assert.equal(granted.units[0].replacementBank, 4);
+  assert.throws(() => apply(direct, { type: "set_level", unitId: "unit-party", level: 4 }), (error) => error.code === "cap");
+  let high = apply(direct, { type: "set_level", unitId: "unit-party", level: 13 }).state;
+  high = add(high, "archive");
+  assert.throws(() => apply(high, { type: "set_level", unitId: "unit-party", level: 9 }), (error) => error.code === "level_gate");
+});
+
+test("settings save is one change and keeps the previous record when refused", () => {
+  const state = add(party(), "library");
+  const saved = apply(state, {
+    type: "save_settings",
+    name: "Practice Hall",
+    owner: "The company",
+    unitId: "unit-party",
+    cadenceDays: 10,
+    label: "A spring day",
+    ordinal: 4,
+    level: 8,
+    grantReplacements: false,
+    capabilities: ["arcane_or_tool"],
+  }).state;
+  assert.equal(saved.revision, state.revision + 1);
+  assert.equal(saved.name, "Practice Hall");
+  assert.equal(saved.units[0].owner, "The company");
+  assert.equal(saved.units[0].level, 8);
+  assert.equal(saved.units[0].replacementBank, 0);
+  assert.equal(saved.clock.cadenceDays, 10);
+  assert.equal(saved.clock.ordinal, 4);
+  assert.deepEqual(saved.units[0].capabilities, ["arcane_or_tool"]);
+  assert.throws(() => apply(saved, {
+    type: "save_settings",
+    name: "Renamed Hall",
+    unitId: "unit-party",
+    level: 1,
+    cadenceDays: 12,
+  }), (error) => error.code === "cap");
+  assert.equal(saved.name, "Practice Hall");
+  assert.equal(saved.units[0].level, 8);
+  assert.equal(saved.clock.cadenceDays, 10);
+});
+
+test("DM can record defenders, loans, committed goods, and an order already running", () => {
+  let state = add(party(), "barrack");
+  state = add(state, "storehouse");
+  const barrack = state.facilities.find((item) => item.catalogId === "barrack");
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  const turns = state.turns.length;
+  state = apply(state, { type: "record_defenders", facilityId: barrack.id, count: 2, names: ["Pell Ash", "Sarn Wick"] }).state;
+  assert.equal(state.turns.length, turns);
+  assert.deepEqual(
+    state.roster.filter((person) => person.status === "active").map((person) => person.name),
+    ["Pell Ash", "Sarn Wick"],
+  );
+  assert.throws(() => apply(state, { type: "record_defenders", actorRole: "editor", facilityId: barrack.id, count: 1 }), (error) => error.code === "forbidden");
+  const cash = state.finance.cashGp;
+  state = apply(state, { type: "set_loan", creditor: "Mill at Northbridge", amountGp: 250, note: "Seed money" }).state;
+  assert.equal(state.finance.loans[0].amountGp, 250);
+  assert.equal(state.finance.cashGp, cash);
+  state = apply(state, { type: "set_loan", loanId: state.finance.loans[0].id, creditor: "Mill at Northbridge", amountGp: 200, note: "Seed money" }).state;
+  assert.equal(state.finance.loans[0].amountGp, 200);
+  state = apply(state, { type: "reserve_goods", name: "Wool", standardGp: 500, note: "Trade sell already underway" }).state;
+  assert.equal(state.goods[0].reservedGp, 500);
+  assert.equal(state.finance.cashGp, cash);
+  assert.equal(state.tasks.length, 0);
+  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 2, note: "Already listed" }).state;
+  assert.equal(state.orders[0].status, "in_progress");
+  assert.equal(state.orders[0].startedTurn, 2);
+  assert.equal(state.tasks.length, 0);
+  assert.equal(state.finance.cashKnown, false);
+});
+
+test("settings and the DM record screen are reachable", () => {
+  const state = emptyEstate({ name: "Unnamed bastion" });
+  const settings = render({ mode: "sandbox", view: "settings", state, error: "", notice: "", configured: true, serviceRole: false });
+  assert.match(settings, /<select id="level"/);
+  assert.doesNotMatch(settings, /<input id="level"/);
+  for (let level = 1; level <= 20; level += 1) assert.match(settings, new RegExp(`value="${level}"`));
+  assert.match(settings, /none of them change/);
+  const record = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: true, serviceRole: false });
+  assert.match(record, /Defenders already housed/);
+  assert.match(record, /Outstanding loan/);
+  assert.match(record, /Goods already committed/);
+  assert.match(record, /Order already underway/);
+  assert.match(record, /runs a Recruit turn/);
+});
+
+test("the server handles every command the client can send", async () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/003_command_parity.sql"), "utf8");
+  const cases = [...rules.matchAll(/case "([a-z_]+)":/g)].map((match) => match[1]);
+  assert.equal(new Set(cases).size, cases.length);
+  const block = migration.match(/function public\.handled_command_types\(\)[\s\S]*?array\[([\s\S]*?)\]::text\[\]/);
+  assert.ok(block, "handled_command_types is missing");
+  const server = [...block[1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+  assert.deepEqual([...server].sort(), [...cases].sort());
+  const dmBlock = migration.match(/dm_only text\[\] := array\[([\s\S]*?)\];/);
+  const dmClient = rules.match(/const DM_ONLY = new Set\(\[([\s\S]*?)\]\);/)[1];
+  const dmServer = [...dmBlock[1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+  const dmRules = [...dmClient.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+  assert.deepEqual([...dmServer].sort(), [...dmRules].sort());
+  const sent = [];
+  for (const name of ["main.js", "demo.js", "render.js", "remote.js"]) {
+    const source = await readFile(path.join(root, "js", name), "utf8");
+    sent.push(...[...source.matchAll(/type:\s*"([a-z_]+)"/g)].map((match) => match[1]));
+  }
+  for (const type of sent) assert.ok(server.includes(type), type);
+  const updates = migration.match(/update\s+public\.estates/gi) || [];
+  assert.deepEqual(updates, ["update public.estates"]);
+  assert.match(migration, /update public\.estates set document = doc, revision = rev where id = eid/);
 });
 
 test("publishable keys are accepted and secret keys are refused", () => {

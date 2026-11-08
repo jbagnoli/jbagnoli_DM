@@ -115,6 +115,7 @@ function view(model) {
   if (model.view === "money") return renderMoney(model);
   if (model.view === "journal") return renderJournal(model);
   if (model.view === "settings") return renderSettings(model);
+  if (model.view === "record") return renderRecord(model);
   if (model.view === "import") return renderImport(model);
   if (model.view === "help") return renderHelp();
   if (model.view === "more") return renderMore();
@@ -249,11 +250,19 @@ function renderJournal(model) {
 function renderSettings(model) {
   const state = model.state;
   const unit = state.units[0];
+  const specials = state.facilities.filter((item) => item.unitId === unit.id && item.kind === "special" && item.status !== "archived");
+  const highest = specials.reduce((max, item) => Math.max(max, specialById(item.catalogId)?.level || 0), 0);
+  const levels = Array.from({ length: 20 }, (_, index) => index + 1);
   return `<h2 class="with-mark">${mark("key")} Settings</h2>
+    <p class="muted">Only the DM can save settings. Name, owner, level, turn length, date, and prerequisites are saved together. If one of them is refused, none of them change.</p>
     <form id="settings" class="panel stack">
       <label>Estate name <input id="estate-name" name="name" value="${esc(state.name)}" maxlength="80"></label>
       <label>Owner label <input id="owner" name="owner" value="${esc(unit.owner)}" maxlength="120"></label>
-      <label>Level <input id="level" name="level" inputmode="numeric" value="${unit.level}"></label>
+      <label for="level">Level
+        <select id="level" name="level">${levels.map((level) => `<option value="${level}" ${level === unit.level ? "selected" : ""}>${level}</option>`).join("")}</select>
+      </label>
+      <p id="level-fit" class="muted">This unit has ${specials.length} special ${specials.length === 1 ? "facility" : "facilities"}. Level ${unit.level} allows ${specialCap(unit.level)}. ${highest ? `The highest requirement among them is level ${highest}.` : "No facility requirement yet."} A shut facility still counts. Saving a level that is too low for these rooms is refused.</p>
+      <label><input id="grant-replacements" name="grantReplacements" type="checkbox"> This is a level-up. Add one replacement for each level gained.</label>
       <label>Turn length in in-game days <input id="cadence" name="cadenceDays" inputmode="numeric" value="${state.clock.cadenceDays}"></label>
       <label>Calendar label <input id="date-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if the date is unknown"></label>
       <label>Day number <input id="ordinal" name="ordinal" inputmode="numeric" value="${state.clock.ordinal ?? ""}" placeholder="Unknown"></label>
@@ -261,7 +270,7 @@ function renderSettings(model) {
         ${Object.entries(PREREQ_LABELS).map(([id, label]) => `<label><input type="checkbox" name="cap" value="${id}" ${unit.capabilities.includes(id) ? "checked" : ""}> ${esc(label)}</label>`).join("")}
       </fieldset>
       <button class="primary" type="submit">Save settings</button>
-      <p class="muted">Raising the level adds one replacement per level gained. It does not add free specials by itself, and it does not look backward.</p>
+      <p class="muted">Choosing a level here does not add replacements unless the level-up box is checked, and only for levels actually gained. It does not look backward, and it does not add facilities. The turn length stays editable. A new record starts at 10 in-game days.</p>
     </form>
     <form id="advance" class="panel stack" style="margin-top:14px">
       <label>Advance in-game days <input id="advance-days" name="days" inputmode="numeric" value="1"></label>
@@ -273,6 +282,58 @@ function renderSettings(model) {
       <label>Level <input id="split-level" name="level" inputmode="numeric" value="5"></label>
       <label><input id="split-ok" name="acknowledge" type="checkbox"> I understand this adds a new cap and copies no rooms.</label>
       <button type="submit">Split off a unit</button>
+    </form>
+    <p style="margin-top:14px"><button type="button" data-action="nav" data-view="record">Record defenders, loans, and orders already underway</button></p>`;
+}
+
+function renderRecord(model) {
+  const state = model.state;
+  const specials = state.facilities.filter((item) => item.kind === "special" && item.status !== "archived");
+  const loans = state.finance.loans || [];
+  const orders = (state.orders || []).filter((item) => item.recorded && item.status === "in_progress");
+  const facilityOptions = specials.map((facility) => `<option value="${esc(facility.id)}">${esc(facility.name)}</option>`).join("");
+  const orderOptions = specials.flatMap((facility) => {
+    const spec = specialById(facility.catalogId);
+    return (spec?.subs || []).map((sub) => `<option value="${esc(facility.id)}|${esc(sub.id)}">${esc(facility.name)}: ${esc(sub.label)}</option>`);
+  }).join("");
+  return `<h2 class="with-mark">${mark("seal")} Record existing state</h2>
+    <p class="muted">DM only. Use this when the estate already has people, debts, or work in progress. Nothing here runs a Recruit turn, spends cash, or pays a sale.</p>
+    <form id="record-defenders" class="panel stack">
+      <h3>Defenders already housed</h3>
+      ${specials.length ? `<label>Facility <select id="defender-facility" name="facilityId">${facilityOptions}</select></label>
+        <label>How many <input id="defender-count" name="count" inputmode="numeric" value="0"></label>
+        <label>Names, if you know them <textarea id="defender-names" name="names" placeholder="One name per line. Leave blank to record a count only."></textarea></label>
+        <button class="primary" type="submit">Save defender count</button>
+        <p class="muted">This sets the count at that facility. A roomy barrack still holds 12, and a vast barrack holds 25. Extra names are refused.</p>` : `<p class="muted">Add a special facility before recording defenders.</p>`}
+    </form>
+    <form id="record-loan" class="panel stack" style="margin-top:14px">
+      <h3>Outstanding loan</h3>
+      ${loans.length ? `<ul>${loans.map((loan) => `<li>${esc(loan.creditor)} · ${loan.amountGp} GP${loan.note ? ` · ${esc(loan.note)}` : ""}</li>`).join("")}</ul>` : `<p class="muted">No loans recorded. Unknown cash stays unknown.</p>`}
+      <label>Which loan <select id="loan-id" name="loanId"><option value="">New loan</option>${loans.map((loan) => `<option value="${esc(loan.id)}">${esc(loan.creditor)} · ${loan.amountGp} GP</option>`).join("")}</select></label>
+      <label>Creditor <input id="loan-creditor" name="creditor" maxlength="80" placeholder="A lender's name"></label>
+      <label>Amount in GP <input id="loan-amount" name="amountGp" inputmode="numeric"></label>
+      <label>Note <input id="loan-note" name="note" maxlength="240"></label>
+      <label><input id="loan-remove" name="remove" type="checkbox"> Remove the selected loan</label>
+      <button class="primary" type="submit">Save loan</button>
+      <p class="muted">Saving a loan does not change the cash balance.</p>
+    </form>
+    <form id="record-goods" class="panel stack" style="margin-top:14px">
+      <h3>Goods already committed</h3>
+      <label>Existing lot, or a new one <select id="commit-lot" name="lotId"><option value="">New goods</option>${state.goods.filter((lot) => lot.status === "on_hand").map((lot) => `<option value="${esc(lot.id)}">${esc(lot.name)} · ${lot.standardGp} GP list${lot.reservedGp ? `, ${lot.reservedGp} reserved` : ""}</option>`).join("")}</select></label>
+      <label>Name, for new goods <input id="commit-name" name="name" maxlength="80" placeholder="Wool bolts"></label>
+      <label>List price committed, in GP <input id="commit-gp" name="standardGp" inputmode="numeric" placeholder="500"></label>
+      <label>What the goods are tied up in <input id="commit-note" name="note" maxlength="240" placeholder="Trade sell already underway"></label>
+      <button class="primary" type="submit">Mark goods committed</button>
+      <p class="muted">Example: 500 GP of goods already in a sell order. This reserves them. It does not pay the sale.</p>
+    </form>
+    <form id="record-order" class="panel stack" style="margin-top:14px">
+      <h3>Order already underway</h3>
+      ${specials.length ? `<label>Facility and order <select id="record-order-key" name="orderKey">${orderOptions}</select></label>
+        <label>Turn it started <input id="order-started" name="startedTurn" inputmode="numeric" placeholder="Leave blank if you do not know"></label>
+        <label>Note <input id="order-note" name="note" maxlength="240"></label>
+        <button class="primary" type="submit">Mark order in progress</button>
+        <p class="muted">This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
+      ${orders.length ? `<ul>${orders.map((order) => `<li>${esc(order.label || order.suborder)} · turn ${order.startedTurn ?? "unknown"}${order.note ? ` · ${esc(order.note)}` : ""}</li>`).join("")}</ul>` : ""}
     </form>`;
 }
 
@@ -303,6 +364,7 @@ function renderHelp() {
       <li>Research facts, rumors, charms, armies, and theater results.</li>
       <li>Whether a bastion has truly fallen.</li>
       <li>Old notes that do not say whether an order finished.</li>
+      <li>Defenders, loans, goods already committed, and an order that is already running. Enter those on Record existing state. That screen does not run a turn or move cash.</li>
     </ul><p class="muted">Source for the mechanics: the bastions chapter of the Dungeon Master's Guide. This screen does not reprint that chapter.</p></div>`;
 }
 
@@ -311,6 +373,7 @@ function renderMore() {
     <button type="button" data-action="nav" data-view="money">${mark("coin")}<span>Treasury</span></button>
     <button type="button" data-action="nav" data-view="journal">${mark("thread")}<span>Journal and backup</span></button>
     <button type="button" data-action="nav" data-view="settings">${mark("key")}<span>Settings</span></button>
+    <button type="button" data-action="nav" data-view="record">${mark("seal")}<span>Record existing state</span></button>
     <button type="button" data-action="nav" data-view="import">${mark("card")}<span>Review import</span></button>
     <button type="button" data-action="nav" data-view="help">${mark("star")}<span>What is automatic</span></button>
     <button type="button" data-action="export">${mark("seal")}<span>Download JSON backup</span></button>

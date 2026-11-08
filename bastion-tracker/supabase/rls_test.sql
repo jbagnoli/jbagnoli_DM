@@ -82,6 +82,7 @@ select public.apply_command(:'estate_id'::uuid, :rev_cadence, 'cash', '{"type":"
 select public.apply_command(:'estate_id'::uuid, :rev_cash, 'store', '{"type":"add_special","unitId":"unit-party","catalogId":"storehouse"}'::jsonb)->>'revision' as rev_store \gset
 select public.apply_command(:'estate_id'::uuid, :rev_store, 'goods', '{"type":"record_goods","name":"Wool","standardGp":500}'::jsonb)->>'revision' as rev_goods \gset
 select (document->'goods'->0->>'id') as lot_id from public.estates where id = :'estate_id'::uuid \gset
+select (document->'facilities'->0->>'id') as store_id from public.estates where id = :'estate_id'::uuid \gset
 select public.apply_command(
   :'estate_id'::uuid,
   :rev_goods,
@@ -89,8 +90,9 @@ select public.apply_command(
   jsonb_build_object(
     'type', 'commit_turn',
     'unitId', 'unit-party',
+    'presence', 'present',
     'mode', 'orders',
-    'orders', jsonb_build_array(jsonb_build_object('suborder', 'sell', 'lotId', :'lot_id', 'standardGp', 500))
+    'orders', jsonb_build_array(jsonb_build_object('facilityId', :'store_id', 'suborder', 'sell', 'lotId', :'lot_id', 'standardGp', 500))
   )
 )->>'revision' as rev_sell \gset
 select (document#>>'{finance,cashGp}')::int as cash_before from public.estates where id = :'estate_id'::uuid \gset

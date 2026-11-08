@@ -33,6 +33,12 @@ const DM_ONLY = new Set([
   "import_accept",
   "set_capabilities",
   "mark_enclosure",
+  "save_settings",
+  "set_level",
+  "record_defenders",
+  "set_loan",
+  "reserve_goods",
+  "record_order",
 ]);
 
 export function emptyEstate(options = {}) {
@@ -44,7 +50,7 @@ export function emptyEstate(options = {}) {
     clock: {
       label: options.dateLabel || "",
       ordinal: options.dayOrdinal ?? null,
-      cadenceDays: options.cadenceDays || 7,
+      cadenceDays: options.cadenceDays ?? 10,
     },
     finance: {
       cashKnown: false,
@@ -289,6 +295,18 @@ export function apply(input, command) {
       return confirmFall(state, command);
     case "import_accept":
       return importAccept(state, command);
+    case "save_settings":
+      return saveSettings(state, command);
+    case "set_level":
+      return setLevel(state, command);
+    case "record_defenders":
+      return recordDefenders(state, command);
+    case "set_loan":
+      return setLoan(state, command);
+    case "reserve_goods":
+      return reserveGoods(state, command);
+    case "record_order":
+      return recordOrder(state, command);
     default:
       throw new RuleError("unsupported", "That action is not available.");
   }
@@ -354,6 +372,81 @@ function raiseLevel(state, command) {
   unit.level = level;
   unit.replacementBank += gained;
   return finish(state, command, { level, gainedReplacements: gained, bank: unit.replacementBank }, gained ? `Level ${level}. One replacement was added for each level gained (${gained}).` : "Level unchanged.");
+}
+
+function occupiedSpecials(state, unitId) {
+  return state.facilities.filter((item) => item.unitId === unitId && item.kind === "special" && item.status !== "archived");
+}
+
+function applyDirectLevel(state, unit, level, grant) {
+  const next = Number(level);
+  if (!Number.isInteger(next) || next < 1 || next > 20) {
+    throw new RuleError("bad_level", "Choose a level from 1 to 20.");
+  }
+  const specials = occupiedSpecials(state, unit.id);
+  const cap = specialCap(next);
+  if (specials.length > cap) {
+    throw new RuleError("cap", `Level ${next} allows ${cap} special facilities, and this unit already has ${specials.length}. Shut facilities still count.`);
+  }
+  for (const facility of specials) {
+    const spec = specialById(facility.catalogId);
+    if (spec && next < spec.level) {
+      throw new RuleError("level_gate", `${spec.name} requires level ${spec.level}. Level ${next} is below what this unit's facilities require.`);
+    }
+  }
+  const gained = next - unit.level;
+  unit.level = next;
+  const granted = grant && gained > 0 ? gained : 0;
+  if (granted) unit.replacementBank += granted;
+  return { gained, granted };
+}
+
+function setLevel(state, command) {
+  const unit = unitById(state, command.unitId || state.units[0].id);
+  const outcome = applyDirectLevel(state, unit, command.level, command.grantReplacements === true);
+  const summary = outcome.granted
+    ? `Level ${unit.level}. One replacement was added for each level gained (${outcome.granted}).`
+    : `Level set to ${unit.level}. No replacement was added.`;
+  return finish(state, command, { level: unit.level, bank: unit.replacementBank, granted: outcome.granted }, summary);
+}
+
+function saveSettings(state, command) {
+  if (command.name) state.name = String(command.name).slice(0, 80);
+  if (command.cadenceDays != null && command.cadenceDays !== "") {
+    const days = Number(command.cadenceDays);
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      throw new RuleError("bad_cadence", "Cadence is a whole number of in-game days, at least 1.");
+    }
+    state.clock.cadenceDays = days;
+  }
+  const unit = unitById(state, command.unitId || state.units[0].id);
+  if (command.unitName) unit.name = String(command.unitName).slice(0, 80);
+  if (command.owner) unit.owner = String(command.owner).slice(0, 120);
+  if (command.label != null) state.clock.label = String(command.label).slice(0, 120);
+  if (command.ordinal === null || command.ordinal === "") {
+    state.clock.ordinal = null;
+  } else if (command.ordinal != null) {
+    const ordinal = Number(command.ordinal);
+    if (!Number.isInteger(ordinal) || ordinal < 0) throw new RuleError("bad_day", "The day count has to be a whole number, or stay unknown.");
+    state.clock.ordinal = ordinal;
+  }
+  let levelNote = "Level unchanged. No replacement was added.";
+  if (command.level != null && command.level !== "") {
+    const outcome = applyDirectLevel(state, unit, command.level, command.grantReplacements === true);
+    levelNote = outcome.granted
+      ? `Level ${unit.level}. One replacement was added for each level gained (${outcome.granted}).`
+      : `Level set to ${unit.level}. No replacement was added.`;
+  }
+  if (Array.isArray(command.capabilities)) {
+    const allowed = new Set(["arcane_or_tool", "holy_or_druid", "spellcasting_focus", "expertise", "fighting_or_unarmored"]);
+    unit.capabilities = command.capabilities.filter((item) => allowed.has(item));
+  }
+  return finish(
+    state,
+    command,
+    { cadenceDays: state.clock.cadenceDays, level: unit.level, bank: unit.replacementBank },
+    `Saved settings. ${levelNote}`,
+  );
 }
 
 function splitUnit(state, command) {
@@ -656,6 +749,128 @@ function rosterRemove(state, command) {
   if (!person) throw new RuleError("missing_person", "That person is not on the roster.");
   person.status = "gone";
   return finish(state, command, { personId: person.id }, `Marked ${person.name} as gone. The name stays in the log.`);
+}
+
+function recordDefenders(state, command) {
+  const facility = facilityById(state, command.facilityId);
+  const count = Number(command.count);
+  if (!Number.isInteger(count) || count < 0 || count > 25) {
+    throw new RuleError("bad_amount", "Defender count is a whole number from 0 to 25.");
+  }
+  if (facility.catalogId === "barrack" && count > barrackCap(facility)) {
+    throw new RuleError("barrack_cap", `This barrack houses ${barrackCap(facility)}, not ${count}.`);
+  }
+  const names = (Array.isArray(command.names) ? command.names : [])
+    .map((name) => String(name || "").trim())
+    .filter(Boolean)
+    .map((name) => name.slice(0, 80));
+  if (names.length > count) throw new RuleError("bad_amount", "There are more names than the defender count.");
+  const existing = state.roster.filter((person) => person.category === "defender" && person.status === "active" && person.facilityId === facility.id);
+  for (let index = count; index < existing.length; index += 1) existing[index].status = "gone";
+  const kept = existing.slice(0, count);
+  while (kept.length < count) {
+    const person = {
+      id: nid(state, "npc"),
+      name: `Defender ${state.roster.length + 1}`,
+      category: "defender",
+      summary: "Recorded as already housed. This was not a Recruit order.",
+      role: "Defender",
+      link: "",
+      unitId: facility.unitId,
+      facilityId: facility.id,
+      status: "active",
+      housed: true,
+      protectsOnce: false,
+    };
+    state.roster.push(person);
+    kept.push(person);
+  }
+  names.forEach((name, index) => {
+    kept[index].name = name;
+  });
+  return finish(state, command, { facilityId: facility.id, count }, `Recorded ${count} defenders at ${facility.name}. No Recruit turn was run.`);
+}
+
+function setLoan(state, command) {
+  if (!state.finance.loans) state.finance.loans = [];
+  if (command.remove === true) {
+    const index = state.finance.loans.findIndex((loan) => loan.id === command.loanId);
+    if (index < 0) throw new RuleError("missing_loan", "That loan is not on the record.");
+    const [removed] = state.finance.loans.splice(index, 1);
+    return finish(state, command, { loanId: removed.id, removed: true }, `Removed the loan from ${removed.creditor}. Cash was not changed.`);
+  }
+  const creditor = String(command.creditor || "").trim();
+  if (!creditor) throw new RuleError("name_required", "A loan needs a creditor label.");
+  const amount = Number(command.amountGp);
+  if (!Number.isInteger(amount) || amount < 0) throw new RuleError("bad_amount", "Loan amount is a whole number of GP, or zero.");
+  const note = String(command.note || "").slice(0, 240);
+  if (command.loanId) {
+    const loan = state.finance.loans.find((item) => item.id === command.loanId);
+    if (!loan) throw new RuleError("missing_loan", "That loan is not on the record.");
+    loan.creditor = creditor.slice(0, 80);
+    loan.amountGp = amount;
+    loan.note = note;
+    return finish(state, command, { loanId: loan.id }, `Updated the loan from ${loan.creditor}. Cash was not changed.`);
+  }
+  const loan = { id: nid(state, "loan"), creditor: creditor.slice(0, 80), amountGp: amount, note };
+  state.finance.loans.push(loan);
+  return finish(state, command, { loanId: loan.id }, `Recorded a loan of ${amount} GP from ${loan.creditor}. Cash was not changed.`);
+}
+
+function reserveGoods(state, command) {
+  const amount = Number(command.standardGp);
+  if (!Number.isInteger(amount) || amount < 1) throw new RuleError("bad_amount", "Committed goods need a list price in whole GP.");
+  const note = String(command.note || "Committed to an order already underway. This did not charge or pay anyone.").slice(0, 240);
+  if (command.lotId) {
+    const lot = state.goods.find((item) => item.id === command.lotId && item.status === "on_hand");
+    if (!lot) throw new RuleError("missing_goods", "Those goods are not on hand.");
+    const available = lot.standardGp - (lot.reservedGp || 0);
+    if (amount > available) throw new RuleError("bad_amount", "That commits more than the goods still free.");
+    lot.reservedGp = (lot.reservedGp || 0) + amount;
+    lot.commitment = note;
+    return finish(state, command, { lotId: lot.id, reservedGp: lot.reservedGp }, `Marked ${amount} GP of ${lot.name} as already committed. Cash was not changed.`);
+  }
+  const lot = {
+    id: nid(state, "good"),
+    name: String(command.name || "Goods").slice(0, 80),
+    standardGp: amount,
+    reservedGp: amount,
+    status: "on_hand",
+    unitId: command.unitId || state.units[0].id,
+    note,
+    commitment: note,
+  };
+  state.goods.push(lot);
+  return finish(state, command, { lotId: lot.id, reservedGp: amount }, `Recorded ${amount} GP of ${lot.name} as already committed. Cash was not changed.`);
+}
+
+function recordOrder(state, command) {
+  const facility = facilityById(state, command.facilityId);
+  if (facility.kind !== "special") throw new RuleError("not_special", "Basic rooms do not take orders.");
+  const spec = specialById(facility.catalogId);
+  const sub = spec?.subs.find((item) => item.id === command.suborder);
+  if (!sub) throw new RuleError("bad_order", `${facility.name} cannot take that order.`);
+  let started = null;
+  if (command.startedTurn != null && command.startedTurn !== "") {
+    started = Number(command.startedTurn);
+    if (!Number.isInteger(started) || started < 0) throw new RuleError("bad_day", "The turn it started has to be a whole number, or left blank.");
+  }
+  const note = String(command.note || "").slice(0, 240);
+  if (!state.orders) state.orders = [];
+  let order = state.orders.find((item) => item.facilityId === facility.id && item.status === "in_progress" && item.recorded);
+  if (!order) {
+    order = { id: nid(state, "ord"), facilityId: facility.id, unitId: facility.unitId, recorded: true };
+    state.orders.push(order);
+  }
+  order.suborder = sub.id;
+  order.label = sub.label;
+  order.status = "in_progress";
+  order.startedTurn = started;
+  order.note = note;
+  order.auto = null;
+  order.recorded = true;
+  facility.currentOrderId = order.id;
+  return finish(state, command, { orderId: order.id }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
 }
 
 function recordGoods(state, command) {
@@ -1157,8 +1372,8 @@ function confirmFall(state, command) {
 function importAccept(state, command) {
   const item = command.item || {};
   const status = String(item.status || "");
-  if (item.kind === "turn" || item.kind === "finance" || item.kind === "date" || item.kind === "goods") {
-    throw new RuleError("import_blocked", "Turns, dates, loans, and goods from a review file are not applied. Enter a day, an opening balance, or a new turn yourself.");
+  if (["turn", "finance", "date", "goods", "loan", "defender", "defenders"].includes(item.kind)) {
+    throw new RuleError("import_blocked", "Turns, dates, loans, goods, and defenders from a review file are not applied. Enter those yourself.");
   }
   if (status.toLowerCase().includes("pending") && item.kind !== "facility" && item.kind !== "roster") {
     throw new RuleError("import_blocked", "This note is still awaiting a decision. It was not written into the record.");
