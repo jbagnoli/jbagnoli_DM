@@ -8,7 +8,7 @@ import { configured, isSecretKey, serviceRoleRejected } from "./remote.js";
 import { canAccept, markAgainstRecord, parseReview } from "./review.js";
 import { beginSave, failSave, markSavingButtons, succeedSave } from "./save-feedback.js";
 import { render } from "./render.js";
-import { RuleError, apply, emptyEstate } from "./rules.js";
+import { RuleError, apply, emptyEstate, orderStartedDay } from "./rules.js";
 
 function party() {
   const state = emptyEstate({ name: "Practice Hall", cadenceDays: 7, level: 5 });
@@ -347,9 +347,19 @@ test("DM can record defenders, loans, committed goods, and an order already runn
   assert.equal(state.goods[0].reservedGp, 500);
   assert.equal(state.finance.cashGp, cash);
   assert.equal(state.tasks.length, 0);
-  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 2, note: "Already listed" }).state;
+  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedDay: 1, note: "Already listed" }).state;
   assert.equal(state.orders[0].status, "in_progress");
-  assert.equal(state.orders[0].startedTurn, 2);
+  assert.equal(state.orders[0].startedDay, 1);
+  assert.equal(state.orders[0].startedTurn, undefined);
+  const fromOld = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 1, note: "Old backup" }).state;
+  assert.equal(orderStartedDay(fromOld.orders.at(-1)), 1);
+  assert.equal(fromOld.orders.at(-1).startedTurn, undefined);
+  assert.throws(() => apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedDay: 9 }), (error) => error.code === "bad_day");
+  const listed = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(listed, /In-game day it started/);
+  assert.match(listed, /value="1"/);
+  assert.match(listed, /started day 1/);
+  assert.doesNotMatch(listed, /Turn it started/);
   assert.equal(state.tasks.length, 0);
   assert.equal(state.finance.cashKnown, false);
 });
@@ -598,8 +608,9 @@ test("the server handles every command the client can send", async () => {
   }
   for (const type of sent) assert.ok(server.includes(type), type);
   const updates = migration.match(/update\s+public\.estates/gi) || [];
-  assert.deepEqual(updates, ["update public.estates"]);
+  assert.deepEqual(updates, ["update public.estates", "update public.estates"]);
   assert.match(migration, /update public\.estates set document = doc, revision = rev where id = eid/);
+  assert.match(migration, /update public\.estates\s+set document = public\._bastion_move_started_turn\(document\)\s+where document::text like '%startedTurn%'/);
 });
 
 test("publishable keys are accepted and secret keys are refused", () => {

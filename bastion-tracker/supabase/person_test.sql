@@ -114,3 +114,25 @@ set role authenticated;
 select set_config('request.jwt.claim.sub', '31313131-3131-3131-3131-313131313131', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
 select public._run_person_checks();
+
+reset role;
+do $$
+declare
+  moved jsonb;
+begin
+  moved := public._bastion_move_started_turn(jsonb_build_object(
+    'orders', jsonb_build_array(jsonb_build_object(
+      'id', 'ord-51',
+      'status', 'in_progress',
+      'recorded', true,
+      'startedTurn', 30,
+      'suborder', 'recruit'
+    ))
+  ));
+  if (moved#>>'{orders,0,startedDay}')::int is distinct from 30 or moved#>>'{orders,0,startedTurn}' is not null then
+    raise exception 'startedTurn was not moved onto startedDay';
+  end if;
+  if exists (select 1 from pg_proc where proname = '_bastion_move_started_turn' and prosecdef) then
+    raise exception 'day conversion helper is security definer';
+  end if;
+end $$;

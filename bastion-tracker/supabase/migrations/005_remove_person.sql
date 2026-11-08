@@ -1,5 +1,14 @@
 -- Let the DM remove a mistaken roster name, and let an editor or the DM
 -- fill in a name later. Existing people are not deleted. Cash is not changed.
+--
+-- Also rename startedTurn to startedDay on recorded in-progress orders.
+-- That field was only filled by the "order already underway" form. The only
+-- live use is one such order on one estate, and the number stored there is
+-- an in-game day (the same day number as Settings), not a count of turns.
+-- The migration therefore copies startedTurn onto startedDay and drops
+-- startedTurn. It does not finish any order. Recorded orders stay in
+-- progress until someone records a different one. Task timers still use
+-- their own day counts, not the turn length.
 
 create or replace function public.handled_command_types()
 returns text[]
@@ -376,6 +385,110 @@ begin
   return result;
 end;
 $$;
+
+-- Replace the order-already-underway command so new saves store startedDay.
+-- An old command that still sends startedTurn is kept and stored as a day.
+create or replace function public._bastion_cmd_record_order(doc jsonb, command jsonb)
+returns jsonb
+language plpgsql
+set search_path = public
+as $$
+declare
+  facility jsonb;
+  spec jsonb;
+  sub jsonb;
+  started int;
+  raw text;
+  note text;
+  existing jsonb;
+  order_row jsonb;
+  order_id text;
+begin
+  facility := public._bastion_facility(doc, command->>'facilityId');
+  if facility->>'kind' is distinct from 'special' then
+    raise exception 'Basic rooms do not take orders.' using errcode = '22023';
+  end if;
+  spec := public._bastion_spec(facility->>'catalogId');
+  select elem into sub from jsonb_array_elements(coalesce(spec->'subs', '[]'::jsonb)) elem where elem->>'id' = command->>'suborder' limit 1;
+  if sub is null then
+    raise exception '% cannot take that order.', facility->>'name' using errcode = '22023';
+  end if;
+  raw := null;
+  if command ? 'startedDay' and command->'startedDay' is distinct from 'null'::jsonb and coalesce(command->>'startedDay', '') <> '' then
+    raw := command->>'startedDay';
+  elsif command ? 'startedTurn' and command->'startedTurn' is distinct from 'null'::jsonb and coalesce(command->>'startedTurn', '') <> '' then
+    raw := command->>'startedTurn';
+  end if;
+  if raw is not null then
+    started := public._bastion_whole(raw, 0, 2000000000, 'The in-game day it started has to be a whole number, or left blank.');
+    if doc#>>'{clock,ordinal}' is not null and started > (doc#>>'{clock,ordinal}')::int then
+      raise exception 'That in-game day is later than the current day.' using errcode = '22023';
+    end if;
+  else
+    started := null;
+  end if;
+  note := left(coalesce(command->>'note', ''), 240);
+  select elem into existing
+  from jsonb_array_elements(public._bastion_arr(doc, 'orders')) elem
+  where elem->>'facilityId' = facility->>'id' and elem->>'status' = 'in_progress' and coalesce((elem->>'recorded')::boolean, false)
+  limit 1;
+  if existing is null then
+    select taken.next_doc, taken.next_id into doc, order_id from public._bastion_take(doc, 'ord') as taken;
+    order_row := jsonb_build_object('id', order_id, 'facilityId', facility->>'id', 'unitId', facility->>'unitId', 'recorded', true);
+  else
+    order_row := existing;
+    order_id := existing->>'id';
+  end if;
+  order_row := (order_row - 'startedTurn') || jsonb_build_object(
+    'suborder', sub->>'id',
+    'label', sub->>'label',
+    'status', 'in_progress',
+    'startedDay', to_jsonb(started),
+    'note', note,
+    'auto', null,
+    'recorded', true
+  );
+  if existing is null then
+    doc := jsonb_set(doc, '{orders}', public._bastion_arr(doc, 'orders') || jsonb_build_array(order_row));
+  else
+    doc := jsonb_set(doc, '{orders}', public._bastion_replace(doc->'orders', order_id, order_row));
+  end if;
+  facility := facility || jsonb_build_object('currentOrderId', order_id);
+  doc := public._bastion_put_facility(doc, facility);
+  return public._bastion_out(doc, jsonb_build_object('orderId', order_id, 'startedDay', to_jsonb(started)), format('Marked %s as already running %s. No turn was resolved and no money moved.', facility->>'name', sub->>'label'));
+end;
+$$;
+
+-- Copy startedTurn onto startedDay for recorded orders already saved.
+-- See the comment at the top of this file for why those numbers are days.
+create or replace function public._bastion_move_started_turn(doc jsonb)
+returns jsonb
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+    when doc->'orders' is null then doc
+    else jsonb_set(doc, '{orders}', coalesce((
+      select jsonb_agg(
+        case
+          when coalesce((elem->>'recorded')::boolean, false)
+               and elem ? 'startedTurn'
+               and not (elem ? 'startedDay')
+            then (elem - 'startedTurn') || jsonb_build_object('startedDay', elem->'startedTurn')
+          when elem ? 'startedTurn' then elem - 'startedTurn'
+          else elem
+        end
+        order by ord
+      )
+      from jsonb_array_elements(doc->'orders') with ordinality as t(elem, ord)
+    ), '[]'::jsonb))
+  end;
+$$;
+
+update public.estates
+set document = public._bastion_move_started_turn(document)
+where document::text like '%startedTurn%';
 
 revoke all on function public.apply_command(uuid, bigint, text, jsonb) from public, anon;
 grant execute on function public.apply_command(uuid, bigint, text, jsonb) to authenticated;

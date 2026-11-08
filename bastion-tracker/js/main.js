@@ -351,7 +351,7 @@ app.addEventListener("submit", async (event) => {
         type: "record_order",
         facilityId,
         suborder,
-        startedTurn: data.startedTurn === "" ? null : Number(data.startedTurn),
+        startedDay: data.startedDay === "" ? null : Number(data.startedDay),
         note: data.note,
       });
     } else if (form.id === "advance") {

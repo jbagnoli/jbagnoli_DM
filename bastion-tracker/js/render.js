@@ -1,4 +1,5 @@
 import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, specialById, specialCap } from "./catalog.js";
+import { orderStartedDay } from "./rules.js";
 import { markSavingButtons } from "./save-feedback.js";
 import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
@@ -386,11 +387,15 @@ function renderRecord(model) {
     <form id="record-order" class="panel stack" style="margin-top:14px">
       <h3>Order already underway</h3>
       ${specials.length ? `<label>Facility and order <select id="record-order-key" name="orderKey">${orderOptions}</select></label>
-        <label>Turn it started <input id="order-started" name="startedTurn" inputmode="numeric" placeholder="Leave blank if you do not know"></label>
+        <label for="order-started">In-game day it started <input id="order-started" name="startedDay" inputmode="numeric" value="${state.clock.ordinal ?? ""}" placeholder="Leave blank if you do not know"></label>
         <label>Note <input id="order-note" name="note" maxlength="240"></label>
         <button class="primary" type="submit">Mark order in progress</button>
-        <p class="muted">This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
-      ${orders.length ? `<ul>${orders.map((order) => `<li>${esc(order.label || order.suborder)} · turn ${order.startedTurn ?? "unknown"}${order.note ? ` · ${esc(order.note)}` : ""}</li>`).join("")}</ul>` : ""}
+        <p class="muted">Use the same day number as Settings. Leave it blank if you do not know it. This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
+      ${orders.length ? `<ul>${orders.map((order) => {
+        const day = orderStartedDay(order);
+        const today = day != null && state.clock.ordinal === day && state.clock.label ? ` · ${esc(state.clock.label)}` : "";
+        return `<li>${esc(order.label || order.suborder)} · started day ${day ?? "unknown"}${today}${order.note ? ` · ${esc(order.note)}` : ""}</li>`;
+      }).join("")}</ul>` : ""}
     </form>`;
 }
 

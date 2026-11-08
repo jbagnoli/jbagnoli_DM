@@ -965,16 +965,32 @@ function removeGoods(state, command) {
   return finish(state, command, { lotId: lot.id, removed: true }, `Removed ${lot.name || "unnamed goods"}. Cash was not changed.`);
 }
 
+function readStartedDay(command) {
+  const raw = Object.prototype.hasOwnProperty.call(command, "startedDay") ? command.startedDay : command.startedTurn;
+  if (raw == null || raw === "") return null;
+  const started = Number(raw);
+  if (!Number.isInteger(started) || started < 0) {
+    throw new RuleError("bad_day", "The in-game day it started has to be a whole number, or left blank.");
+  }
+  return started;
+}
+
+export function orderStartedDay(order) {
+  if (!order) return null;
+  if (order.startedDay != null && order.startedDay !== "") return Number(order.startedDay);
+  if (order.startedTurn != null && order.startedTurn !== "") return Number(order.startedTurn);
+  return null;
+}
+
 function recordOrder(state, command) {
   const facility = facilityById(state, command.facilityId);
   if (facility.kind !== "special") throw new RuleError("not_special", "Basic rooms do not take orders.");
   const spec = specialById(facility.catalogId);
   const sub = spec?.subs.find((item) => item.id === command.suborder);
   if (!sub) throw new RuleError("bad_order", `${facility.name} cannot take that order.`);
-  let started = null;
-  if (command.startedTurn != null && command.startedTurn !== "") {
-    started = Number(command.startedTurn);
-    if (!Number.isInteger(started) || started < 0) throw new RuleError("bad_day", "The turn it started has to be a whole number, or left blank.");
+  const started = readStartedDay(command);
+  if (started != null && state.clock.ordinal != null && started > state.clock.ordinal) {
+    throw new RuleError("bad_day", "That in-game day is later than the current day.");
   }
   const note = String(command.note || "").slice(0, 240);
   if (!state.orders) state.orders = [];
@@ -986,12 +1002,15 @@ function recordOrder(state, command) {
   order.suborder = sub.id;
   order.label = sub.label;
   order.status = "in_progress";
-  order.startedTurn = started;
+  order.startedDay = started;
+  delete order.startedTurn;
   order.note = note;
   order.auto = null;
   order.recorded = true;
   facility.currentOrderId = order.id;
-  return finish(state, command, { orderId: order.id }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
+  // The stored day is only a label. It does not finish the order. Real task
+  // timers still use their own day counts, not the turn length.
+  return finish(state, command, { orderId: order.id, startedDay: started }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
 }
 
 function recordGoods(state, command) {
