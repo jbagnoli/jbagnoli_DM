@@ -3,7 +3,7 @@
 ## Page diagram
 
 - File: `arcane-lattice.svg`
-- Original line drawing made for this tracker. Not taken from a book, a font, or another site.
+- Original drawing made for this tracker. The marks are whole planetary, elemental, and seal signs, drawn as paths. Not taken from a font or another site.
 
 ## Cover illustration
 

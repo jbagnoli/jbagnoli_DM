@@ -44,7 +44,7 @@ body::before {
   background-repeat: repeat;
   background-size: 840px 960px;
   background-position: 48px 90px;
-  opacity: 0.08;
+  opacity: 1;
 }
 .wrap, .topline, .skip { position: relative; z-index: 1; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -223,7 +223,7 @@ textarea { min-height: 120px; }
 }
 .bottom-nav button { flex-direction: column; gap: 2px; padding: 8px 4px; font-size: 11px; width: auto; background: transparent; }
 @media (max-width: 700px) {
-  body::before { opacity: 0.045; }
+  body::before { opacity: 0.72; }
   .hero img { height: 156px; }
   .hero-strip img { height: 112px; }
 }
