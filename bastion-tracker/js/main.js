@@ -2,7 +2,7 @@ import { BASTION_CONFIG } from "../config.js";
 import { specialById } from "./catalog.js";
 import { practiceState } from "./demo.js";
 import { apply, RuleError } from "./rules.js";
-import { acceptInvite, applyCommand, configured, createEstate, listEstates, serviceRoleRejected, signIn } from "./remote.js";
+import { acceptInvite, applyCommand, configured, createEstate, listEstates, memberRole, serviceRoleRejected, signIn } from "./remote.js";
 import { canAccept, markAgainstRecord, parseReview } from "./review.js";
 import { render } from "./render.js";
 import { beginSave, failSave, succeedSave } from "./save-feedback.js";
@@ -25,6 +25,10 @@ const model = {
   confirmGoodsId: "",
   confirmPersonId: "",
   editPersonId: "",
+  replacePersonId: "",
+  roomAction: null,
+  projectId: "",
+  role: "",
 };
 
 function paint() {
@@ -132,6 +136,7 @@ app.addEventListener("click", async (event) => {
     model.mode = "sandbox";
     model.view = "dashboard";
     model.state = practiceState();
+    model.role = "dm";
     model.error = "";
     model.save = null;
     model.notice = "Practice data only.";
@@ -141,9 +146,14 @@ app.addEventListener("click", async (event) => {
     model.mode = "gate";
     model.state = null;
     model.token = "";
+    model.role = "";
     model.review = [];
     model.reviewText = "";
     model.save = null;
+    model.roomAction = null;
+    model.projectId = "";
+    model.editPersonId = "";
+    model.replacePersonId = "";
     model.notice = "Left the record. Practice data was dropped.";
     paint();
   }
@@ -151,6 +161,8 @@ app.addEventListener("click", async (event) => {
     model.view = button.dataset.view;
     model.error = "";
     model.save = null;
+    model.roomAction = null;
+    model.projectId = "";
     paint();
   }
   if (action === "export" && model.state) {
@@ -200,6 +212,7 @@ app.addEventListener("click", async (event) => {
   }
   if (action === "edit-person") {
     model.editPersonId = button.dataset.id;
+    model.replacePersonId = "";
     model.confirmPersonId = "";
     model.error = "";
     paint();
@@ -207,6 +220,41 @@ app.addEventListener("click", async (event) => {
   }
   if (action === "cancel-edit-person") {
     model.editPersonId = "";
+    paint();
+  }
+  if (action === "replace-person") {
+    model.replacePersonId = button.dataset.id;
+    model.editPersonId = "";
+    model.confirmPersonId = "";
+    model.error = "";
+    paint();
+    document.getElementById("replace-person-name")?.focus();
+  }
+  if (action === "cancel-replace-person") {
+    model.replacePersonId = "";
+    paint();
+  }
+  if (action === "room-action") {
+    model.roomAction = { id: button.dataset.id, mode: button.dataset.mode };
+    model.projectId = "";
+    model.error = "";
+    paint();
+    const focusId = { edit: "room-note", remove: "remove-reason", correct: "correct-catalog", level: "level-catalog", "replace-basic": "replace-room" }[button.dataset.mode];
+    document.getElementById(focusId)?.focus();
+  }
+  if (action === "cancel-room-action") {
+    model.roomAction = null;
+    paint();
+  }
+  if (action === "cancel-project") {
+    model.projectId = button.dataset.id;
+    model.roomAction = null;
+    model.error = "";
+    paint();
+    document.getElementById("project-reason")?.focus();
+  }
+  if (action === "cancel-project-close") {
+    model.projectId = "";
     paint();
   }
   if (action === "accept-review") {
@@ -272,13 +320,90 @@ app.addEventListener("submit", async (event) => {
       save({ type: "add_basic", unitId: model.state.units[0].id, roomId: data.roomId, space: data.space, inherited: data.inherited === "on" });
     } else if (form.id === "person") {
       if (data.personId) {
-        await save({ type: "edit_person", personId: data.personId, name: data.name, category: data.category, role: data.role, summary: data.summary, link: data.link });
-        if (!model.error) {
+        const person = model.state.roster.find((item) => item.id === data.personId);
+        const nextFacility = Object.prototype.hasOwnProperty.call(data, "facilityId") ? (data.facilityId || null) : undefined;
+        const assignmentChanged = nextFacility !== undefined && nextFacility !== (person?.facilityId || null);
+        const ok = assignmentChanged
+          ? await save({ type: "assign_person", personId: data.personId, name: data.name, category: data.category, role: data.role, summary: data.summary, link: data.link, facilityId: nextFacility, reason: data.reason })
+          : await save({ type: "edit_person", personId: data.personId, name: data.name, category: data.category, role: data.role, summary: data.summary, link: data.link });
+        if (ok) {
           model.editPersonId = "";
           paint();
         }
       } else {
         save({ type: "roster_save", person: { name: data.name, category: data.category, role: data.role, summary: data.summary, link: data.link, unitId: model.state.units[0].id } });
+      }
+    } else if (form.id === "replace-person") {
+      const ok = await save({
+        type: "replace_person",
+        personId: data.personId,
+        name: data.name,
+        category: data.category,
+        role: data.role,
+        summary: data.summary,
+        link: data.link,
+        reason: data.reason,
+      });
+      if (ok) {
+        model.replacePersonId = "";
+        paint();
+      }
+    } else if (form.id === "edit-room") {
+      const ok = await save({
+        type: "edit_facility",
+        facilityId: data.facilityId,
+        roomId: data.roomId,
+        space: data.space,
+        note: data.note,
+        reason: data.reason,
+      });
+      if (ok) {
+        model.roomAction = null;
+        paint();
+      }
+    } else if (form.id === "remove-room") {
+      const ok = await save(closeRoomCommand("remove_facility", data));
+      if (ok) {
+        model.roomAction = null;
+        paint();
+      }
+    } else if (form.id === "level-replace") {
+      const ok = await save({
+        ...closeRoomCommand("replace_special", data),
+        unitId: model.state.units[0].id,
+        catalogId: data.catalogId,
+      });
+      if (ok) {
+        model.roomAction = null;
+        paint();
+      }
+    } else if (form.id === "correct-special") {
+      const ok = await save({
+        ...closeRoomCommand("correct_special", data),
+        unitId: model.state.units[0].id,
+        catalogId: data.catalogId,
+        reason: data.reason,
+      });
+      if (ok) {
+        model.roomAction = null;
+        paint();
+      }
+    } else if (form.id === "replace-basic") {
+      const ok = await save({
+        ...closeRoomCommand("replace_basic", data),
+        roomId: data.roomId,
+        space: data.space,
+        reason: data.reason,
+      });
+      if (ok) {
+        model.roomAction = null;
+        paint();
+      }
+    } else if (form.id === "cancel-project") {
+      const ok = await save({ type: "cancel_project", projectId: data.projectId, reason: data.reason });
+      if (ok) {
+        model.projectId = "";
+        paint();
       }
     } else if (form.id === "turn") {
       save(turnCommand(data));
@@ -370,6 +495,24 @@ app.addEventListener("submit", async (event) => {
   }
 });
 
+async function readRole() {
+  try {
+    return await memberRole(BASTION_CONFIG, model.token, model.estateId);
+  } catch {
+    return "";
+  }
+}
+
+function closeRoomCommand(type, data) {
+  return {
+    type,
+    facilityId: data.facilityId,
+    reason: data.reason,
+    hirelings: data.hirelings || undefined,
+    cancelWork: data.cancelWork === "on",
+  };
+}
+
 function turnCommand(data) {
   const orders = [];
   for (const facility of model.state.facilities.filter((item) => item.kind === "special")) {
@@ -412,6 +555,7 @@ async function signInFrom(data) {
       model.state = estates[0].document;
     }
     model.mode = "remote";
+    model.role = await readRole();
     model.view = "dashboard";
     model.review = [];
     model.reviewText = "";
@@ -434,6 +578,7 @@ async function acceptFrom(data) {
     model.estateId = estates[0].id;
     model.state = estates[0].document;
     model.mode = "remote";
+    model.role = await readRole();
     model.review = [];
     model.reviewText = "";
     model.notice = "Invitation accepted.";

@@ -41,6 +41,13 @@ const DM_ONLY = new Set([
   "record_order",
   "remove_goods",
   "remove_person",
+  "remove_facility",
+  "edit_facility",
+  "replace_basic",
+  "correct_special",
+  "replace_person",
+  "assign_person",
+  "cancel_project",
 ]);
 
 export function emptyEstate(options = {}) {
@@ -268,6 +275,7 @@ export function apply(input, command) {
     case "add_special":
       return addSpecialCommand(state, command);
     case "replace_special":
+    case "correct_special":
       return replaceSpecial(state, command);
     case "enlarge_special":
       return enlargeSpecial(state, command);
@@ -275,6 +283,14 @@ export function apply(input, command) {
       return addBasic(state, command);
     case "upgrade_basic":
       return upgradeBasic(state, command);
+    case "remove_facility":
+      return removeFacility(state, command);
+    case "edit_facility":
+      return editFacility(state, command);
+    case "replace_basic":
+      return replaceBasic(state, command);
+    case "cancel_project":
+      return cancelProject(state, command);
     case "add_wall_squares":
       return addWalls(state, command);
     case "mark_enclosure":
@@ -315,6 +331,10 @@ export function apply(input, command) {
       return removePerson(state, command);
     case "edit_person":
       return editPerson(state, command);
+    case "replace_person":
+      return replacePerson(state, command);
+    case "assign_person":
+      return assignPerson(state, command);
     default:
       throw new RuleError("unsupported", "That action is not available.");
   }
@@ -482,27 +502,178 @@ function addSpecialCommand(state, command) {
   return finish(state, command, { facilityId: facility.id }, `Added ${facility.name}. No build cost, because specials come from level.`);
 }
 
-function replaceSpecial(state, command) {
-  const unit = unitById(state, command.unitId);
-  const current = facilityById(state, command.facilityId);
-  if (current.unitId !== unit.id) throw new RuleError("wrong_unit", "That facility belongs to another owner.");
-  const spec = specialById(command.catalogId);
+function requireReason(command) {
+  const reason = String(command.reason || "").trim().slice(0, 400);
+  if (!reason) throw new RuleError("reason_required", "Write why this correction is being made. Cash was not changed.");
+  command.reason = reason;
+  return reason;
+}
+
+function assertCanTakeSpecial(state, unit, spec, ignoreId) {
   if (!spec) throw new RuleError("unknown_facility", "That replacement is not in the bastion list.");
   if (unit.level < spec.level) throw new RuleError("level_gate", `${spec.name} requires level ${spec.level}.`);
   if (spec.prereq && !unit.capabilities.includes(spec.prereq)) throw new RuleError("prerequisite", `${spec.name} needs a capability this unit does not have.`);
-  if (spec.unique && activeSpecials(state, unit.id).some((item) => item.catalogId === spec.id && item.id !== current.id)) {
+  if (spec.unique && activeSpecials(state, unit.id).some((item) => item.catalogId === spec.id && item.id !== ignoreId)) {
     throw new RuleError("duplicate", `${spec.name} is already kept.`);
   }
-  const override = command.dmOverride === true;
-  if (override && roleOf(command) !== "dm") throw new RuleError("forbidden", "Only the DM can override a replacement.");
-  if (override && !String(command.reason || "").trim()) throw new RuleError("reason_required", "Write why this replacement skips the normal limit.");
-  if (!override && unit.replacementBank < 1) {
+}
+
+function activeAt(state, facilityId) {
+  return state.roster.filter((person) => person.facilityId === facilityId && (!person.status || person.status === "active"));
+}
+
+function taskPending(task) {
+  return Boolean(task) && !task.settled && !["resolved", "cancelled"].includes(task.status);
+}
+
+function linkedTasks(state, order) {
+  return (state.tasks || []).filter((task) => task.orderId === order.id || (order.taskId && task.id === order.taskId));
+}
+
+function orderUnfinished(state, order) {
+  if (!order || ["resolved", "cancelled"].includes(order.status)) return false;
+  const tasks = linkedTasks(state, order);
+  if (!tasks.length) return true;
+  return tasks.some((task) => taskPending(task));
+}
+
+function facilityWork(state, facilityId) {
+  const orders = (state.orders || []).filter((order) => order.facilityId === facilityId && orderUnfinished(state, order));
+  const orderIds = new Set(orders.map((order) => order.id));
+  const tasks = (state.tasks || []).filter((task) => taskPending(task) && (orderIds.has(task.orderId) || orders.some((order) => order.taskId === task.id)));
+  const projects = (state.projects || []).filter((project) => project.status === "building" && project.facilityId === facilityId);
+  const events = (state.events || []).filter((event) => event.status === "pending" && (
+    event.facilityId === facilityId
+    || event.detail?.facilityId === facilityId
+    || event.detail?.shutdown === facilityId
+  ));
+  return { orders, tasks, projects, events };
+}
+
+function prepareFacilityClosure(state, facility, command) {
+  const people = activeAt(state, facility.id);
+  const defenders = people.filter((person) => person.category === "defender");
+  const lieutenants = people.filter((person) => person.category === "lieutenant");
+  const hirelings = people.filter((person) => person.category === "hireling");
+  const others = people.filter((person) => !["defender", "lieutenant", "hireling"].includes(person.category));
+  if (defenders.length) {
+    const word = defenders.length === 1 ? "defender" : "defenders";
+    throw new RuleError("facility_held", `${facility.name} still houses ${defenders.length} ${word}. Change the defender count before removing or replacing this room. Nobody was deleted, and cash was not changed.`);
+  }
+  if (lieutenants.length) {
+    const word = lieutenants.length === 1 ? "lieutenant" : "lieutenants";
+    throw new RuleError("facility_held", `${facility.name} still has ${lieutenants.length} ${word} assigned. Replace or release them before removing or replacing this room. Nobody was deleted, and cash was not changed.`);
+  }
+  const work = facilityWork(state, facility.id);
+  if (work.events.length) {
+    throw new RuleError("work_unresolved", `A record still waiting on a decision names ${facility.name}. Resolve that before removing or replacing the room. Cash was not changed.`);
+  }
+  if ((work.orders.length || work.tasks.length || work.projects.length) && command.cancelWork !== true) {
+    throw new RuleError("work_unresolved", `${facility.name} has unfinished work. Confirm that you want it cancelled. Cancelling does not pay a sale, deliver a purchase, or refund money already spent.`);
+  }
+  let choice = "";
+  if (hirelings.length) {
+    choice = command.hirelings;
+    if (choice !== "release" && choice !== "archive") {
+      const word = hirelings.length === 1 ? "hireling" : "hirelings";
+      throw new RuleError("hirelings_unresolved", `${facility.name} still has ${hirelings.length} ${word}. Choose whether they stay on the roster unassigned, or are marked released. They are not deleted either way.`);
+    }
+  }
+  let purchaseKept = false;
+  let cancelled = 0;
+  if (command.cancelWork === true) {
+    for (const task of work.tasks) {
+      if (task.auto === "storehouse_sell" && !task.settled) {
+        const lot = state.goods.find((item) => item.id === task.lotId);
+        if (lot) lot.reservedGp = Math.max(0, (lot.reservedGp || 0) - (task.standardGp || 0));
+      }
+      if (task.auto === "storehouse_buy" && !task.settled) purchaseKept = true;
+      task.status = "cancelled";
+      task.settled = false;
+    }
+    for (const order of work.orders) {
+      order.status = "cancelled";
+      order.cancelledReason = "DM closed the facility before this work finished. It was not resolved and it was not paid.";
+      cancelled += 1;
+    }
+    for (const project of work.projects) project.status = "cancelled";
+  }
+  let released = 0;
+  let archived = 0;
+  for (const person of hirelings) {
+    person.facilityId = null;
+    if (choice === "archive") {
+      person.status = "released";
+      const extra = `Released when ${facility.name} was closed.`;
+      person.summary = [person.summary, extra].filter(Boolean).join(" ").slice(0, 160);
+      archived += 1;
+    } else {
+      released += 1;
+    }
+  }
+  for (const person of others) person.facilityId = null;
+  facility.currentOrderId = null;
+  const notes = [];
+  if (others.length) notes.push(`${others.length} other assigned ${others.length === 1 ? "person was" : "people were"} kept on the roster and unassigned.`);
+  if (released) notes.push(`${released} hireling${released === 1 ? "" : "s"} stayed on the roster, unassigned.`);
+  if (archived) notes.push(`${archived} hireling${archived === 1 ? "" : "s"} ${archived === 1 ? "was" : "were"} marked released and ${archived === 1 ? "was" : "were"} not deleted.`);
+  if (cancelled) notes.push(`${cancelled} unfinished order${cancelled === 1 ? "" : "s"} ${cancelled === 1 ? "was" : "were"} cancelled, not paid.`);
+  if (purchaseKept) notes.push("Money already spent on a purchase was not refunded, and the goods were not delivered.");
+  return { note: notes.length ? ` ${notes.join(" ")}` : "" };
+}
+
+function archiveFacility(state, facility, archivedReason) {
+  facility.status = "archived";
+  facility.archivedReason = archivedReason;
+  state.archive.push(structuredClone(facility));
+  state.facilities = state.facilities.filter((item) => item.id !== facility.id);
+}
+
+function specialSpaceAllowed(spec, space) {
+  if (!["cramped", "roomy", "vast"].includes(space)) return false;
+  if (spec.enlargeGp) return space === spec.space || space === "vast";
+  return space === spec.space;
+}
+
+function applySpecialSpace(state, facility, space) {
+  const spec = specialById(facility.catalogId);
+  if (!spec || !specialSpaceAllowed(spec, space)) {
+    throw new RuleError("bad_space", `${facility.name} is not recorded at that size. Enlargement, when the chapter has a price, stays on its own action.`);
+  }
+  if (facility.catalogId === "barrack") {
+    const housed = defendersOf(state, facility.id).length;
+    const cap = space === "vast" ? 25 : 12;
+    if (housed > cap) {
+      throw new RuleError("barrack_cap", `This barrack houses ${housed}, and the ${space} size holds ${cap}. The defender count was not changed.`);
+    }
+  }
+  facility.space = space;
+  facility.hirelings = spec.hirelings + (space === "vast" ? (spec.enlargeHirelings || 0) : 0);
+  if (spec.id === "garden") facility.plots = space === "vast" ? 2 : 1;
+  if (spec.id === "stable") facility.vastCapacityLarge = space === "vast" ? 6 : 3;
+}
+
+function replaceSpecial(state, command) {
+  const unit = unitById(state, command.unitId);
+  const current = facilityById(state, command.facilityId);
+  if (current.kind !== "special") throw new RuleError("not_special", "That room is not a special facility.");
+  if (current.unitId !== unit.id) throw new RuleError("wrong_unit", "That facility belongs to another owner.");
+  const spec = specialById(command.catalogId);
+  assertCanTakeSpecial(state, unit, spec, current.id);
+  if (spec.id === current.catalogId) throw new RuleError("no_change", "Choose a different facility. Edit the note if this room is already the right one.");
+  const correction = command.type === "correct_special" || command.dmOverride === true;
+  if (correction && roleOf(command) !== "dm") throw new RuleError("forbidden", "Only the DM can correct a special facility.");
+  if (correction) requireReason(command);
+  if (!correction && unit.replacementBank < 1) {
     throw new RuleError("no_replacement", "This level has no unused replacement. Gaining a level grants one. The current level by itself does not grant a stack of swaps.");
   }
-  current.status = "archived";
-  state.archive.push({ ...current, archivedReason: override ? `DM override: ${command.reason}` : "Replaced" });
-  state.facilities = state.facilities.filter((item) => item.id !== current.id);
-  if (!override) unit.replacementBank -= 1;
+  const closure = prepareFacilityClosure(state, current, command);
+  const archivedReason = command.type === "correct_special"
+    ? `DM correction: ${command.reason}`
+    : (command.dmOverride === true ? `DM override: ${command.reason}` : "Replaced");
+  archiveFacility(state, current, archivedReason);
+  if (!correction) unit.replacementBank -= 1;
+  const acquired = command.type === "correct_special" ? "dm_correction" : (command.dmOverride === true ? "dm_override" : "replacement");
   const facility = {
     id: nid(state, "fac"),
     unitId: unit.id,
@@ -512,7 +683,7 @@ function replaceSpecial(state, command) {
     space: spec.space,
     hirelings: spec.hirelings,
     status: "active",
-    acquired: "replacement",
+    acquired,
     stocked: false,
     shutdownUntilTurnId: null,
     blockedOnTurnId: null,
@@ -520,7 +691,115 @@ function replaceSpecial(state, command) {
     vastCapacityLarge: spec.id === "stable" ? 3 : null,
   };
   state.facilities.push(facility);
-  return finish(state, command, { facilityId: facility.id, bank: unit.replacementBank }, `Replaced ${current.name} with ${spec.name}. The old one stays in the archive.`);
+  const lead = command.type === "correct_special"
+    ? `DM correction: swapped ${current.name} for ${spec.name}. This did not spend a level-up replacement, and it is not the published once-per-level swap. The old room is archived. Cash was not changed.`
+    : (command.dmOverride === true
+      ? `DM override: replaced ${current.name} with ${spec.name} without using a level-up replacement. The old one stays in the archive. Cash was not changed.`
+      : `Replaced ${current.name} with ${spec.name}. The old one stays in the archive.`);
+  return finish(state, command, { facilityId: facility.id, bank: unit.replacementBank, acquired }, `${lead}${closure.note}`);
+}
+
+function removeFacility(state, command) {
+  const reason = requireReason(command);
+  const current = facilityById(state, command.facilityId);
+  const closure = prepareFacilityClosure(state, current, command);
+  const kind = current.kind;
+  const name = current.name;
+  archiveFacility(state, current, `DM correction: ${reason}`);
+  const lead = kind === "basic"
+    ? `DM correction: archived ${name}. This is not a sale. The bastion chapter does not give a price for removing a basic room, so cash was not changed.`
+    : `DM correction: archived ${name}. Special facilities are not sold. Cash was not changed. The old room is in the archive.`;
+  return finish(state, command, { facilityId: current.id, removed: true }, `${lead}${closure.note}`);
+}
+
+function editFacility(state, command) {
+  requireReason(command);
+  const facility = facilityById(state, command.facilityId);
+  if (facility.status === "building" || state.projects.some((project) => project.status === "building" && project.facilityId === facility.id)) {
+    throw new RuleError("work_unresolved", `${facility.name} is in the middle of an enlargement. Cancel that project or let it finish before editing the room. Cash was not changed.`);
+  }
+  const before = { name: facility.name, space: facility.space, note: facility.note || "", catalogId: facility.catalogId };
+  if (command.note != null) facility.note = String(command.note).slice(0, 160);
+  if (facility.kind === "basic") {
+    if (command.roomId && command.roomId !== facility.catalogId) {
+      const room = BASIC_ROOMS_SAFE(command.roomId);
+      facility.catalogId = room.id;
+      facility.name = room.name;
+    }
+    if (command.space && command.space !== facility.space) {
+      if (!SPACE_SQUARES[command.space]) throw new RuleError("bad_space", "Choose cramped, roomy, or vast.");
+      facility.space = command.space;
+      facility.squares = SPACE_SQUARES[command.space];
+    }
+  } else if (facility.kind === "special") {
+    if (command.roomId && command.roomId !== facility.catalogId) {
+      throw new RuleError("not_basic", "A special facility is swapped from its own action. Edit can change the note or a wrongly recorded size.");
+    }
+    if (command.space && command.space !== facility.space) applySpecialSpace(state, facility, command.space);
+  } else {
+    throw new RuleError("missing_facility", "That room cannot be edited.");
+  }
+  const after = { name: facility.name, space: facility.space, note: facility.note || "", catalogId: facility.catalogId };
+  if (before.name === after.name && before.space === after.space && before.note === after.note && before.catalogId === after.catalogId) {
+    throw new RuleError("no_change", "Nothing on that room changed.");
+  }
+  return finish(
+    state,
+    command,
+    { facilityId: facility.id, before, after },
+    `DM correction: edited ${before.name}. Room: "${before.name}" → "${after.name}". Size: "${before.space}" → "${after.space}". Note: "${before.note}" → "${after.note}". Cash was not changed. This did not start a build and it is not a level-up replacement.`,
+  );
+}
+
+function replaceBasic(state, command) {
+  const reason = requireReason(command);
+  const current = facilityById(state, command.facilityId);
+  if (current.kind !== "basic") throw new RuleError("not_basic", "Use the special-facility swap for a special facility.");
+  const room = BASIC_ROOMS_SAFE(command.roomId);
+  if (!BASIC_BUILD[command.space]) throw new RuleError("bad_space", "Choose cramped, roomy, or vast.");
+  if (current.catalogId === room.id && current.space === command.space) {
+    throw new RuleError("no_change", "That is already the recorded room. Edit the note, or choose a different room.");
+  }
+  const closure = prepareFacilityClosure(state, current, command);
+  const oldName = current.name;
+  archiveFacility(state, current, `DM correction: ${reason}`);
+  const facility = {
+    id: nid(state, "fac"),
+    unitId: current.unitId,
+    kind: "basic",
+    catalogId: room.id,
+    name: room.name,
+    space: command.space,
+    status: "active",
+    acquired: "dm_correction",
+    squares: SPACE_SQUARES[command.space],
+    note: "",
+  };
+  state.facilities.push(facility);
+  return finish(
+    state,
+    command,
+    { facilityId: facility.id, replacedId: current.id },
+    `DM correction: replaced ${oldName} with ${room.name}. The old room is archived. No build was started and no money moved. This is not the published way to add a basic room.${closure.note}`,
+  );
+}
+
+function cancelProject(state, command) {
+  const reason = requireReason(command);
+  const project = (state.projects || []).find((item) => item.id === command.projectId);
+  if (!project || project.status !== "building") throw new RuleError("missing_project", "That build is not still in progress.");
+  project.status = "cancelled";
+  project.cancelledReason = reason;
+  if (project.kind === "upgrade" && project.facilityId) {
+    const facility = state.facilities.find((item) => item.id === project.facilityId);
+    if (facility && facility.status === "building") facility.status = "active";
+  }
+  return finish(
+    state,
+    command,
+    { projectId: project.id, cancelled: true },
+    `DM correction: cancelled the unfinished work on ${project.name}. The build will not finish. Money already spent was not refunded.`,
+  );
 }
 
 function enlargeSpecial(state, command) {
@@ -835,6 +1114,96 @@ function editPerson(state, command) {
   person.category = category;
   const summaryText = `Edited roster ${person.id}. Name: "${oldValues.name}" → "${newValues.name}". Role: "${oldValues.role}" → "${newValues.role}". Category: "${oldValues.category}" → "${newValues.category}". Summary: "${oldValues.summary}" → "${newValues.summary}". Link: "${oldValues.link}" → "${newValues.link}".`;
   return finish(state, command, { personId: person.id, old: oldValues, new: newValues }, summaryText);
+}
+
+function applyPersonEdits(state, person, command) {
+  const name = command.name == null ? person.name : cleanPersonName(command.name);
+  const role = command.role == null ? person.role : String(command.role).slice(0, 80);
+  const summary = command.summary == null ? person.summary : String(command.summary).slice(0, 160);
+  const link = command.link == null ? person.link : String(command.link).slice(0, 300);
+  if (link && !/^https?:\/\//.test(link)) throw new RuleError("bad_link", "A link should start with http:// or https://, or be left blank.");
+  const category = command.category || person.category;
+  if (!PERSON_CATEGORIES.has(category)) throw new RuleError("bad_category", "Choose a roster category.");
+  if (category !== person.category && categoryLocked(state, person)) {
+    throw new RuleError("category_locked", "That person's category stays put while they are a defender, assigned to a facility, or set to protect the bastion.");
+  }
+  return { name, role, summary, link, category };
+}
+
+function replacePerson(state, command) {
+  requireReason(command);
+  const person = state.roster.find((item) => item.id === command.personId);
+  if (!person) throw new RuleError("missing_person", "That person is not on the roster.");
+  const fields = applyPersonEdits(state, person, command);
+  const openOrder = (state.orders || []).some((order) => orderUnfinished(state, order) && mentionsId(order, person.id));
+  const openTask = (state.tasks || []).some((task) => taskPending(task) && mentionsId(task, person.id));
+  const pendingEvent = (state.events || []).some((event) => event.status === "pending" && mentionsId(event, person.id));
+  if (openOrder || openTask || pendingEvent) {
+    throw new RuleError("person_held", "That person is tied to work that has not finished. Release that link before replacing them. Cash was not changed.");
+  }
+  const facilityId = person.facilityId || null;
+  const housed = Boolean(person.housed);
+  const protectsOnce = Boolean(person.protectsOnce);
+  const unitId = person.unitId;
+  const oldName = person.name;
+  person.status = "replaced";
+  person.facilityId = null;
+  person.housed = false;
+  person.protectsOnce = false;
+  const record = {
+    id: nid(state, "npc"),
+    name: fields.name,
+    category: fields.category,
+    summary: fields.summary,
+    role: fields.role,
+    link: fields.link,
+    unitId,
+    facilityId,
+    status: "active",
+    housed,
+    protectsOnce,
+  };
+  state.roster.push(record);
+  const label = record.name || "an unnamed person";
+  return finish(
+    state,
+    command,
+    { personId: record.id, replacedId: person.id },
+    `Replaced roster ${person.id} ("${oldName}") with ${record.id} ("${label}"). The old name stays on the roster as replaced. Cash was not changed.`,
+  );
+}
+
+function assignPerson(state, command) {
+  requireReason(command);
+  const person = state.roster.find((item) => item.id === command.personId);
+  if (!person) throw new RuleError("missing_person", "That person is not on the roster.");
+  const fields = applyPersonEdits(state, person, command);
+  let facilityId = command.facilityId;
+  if (facilityId === "" || facilityId == null) facilityId = null;
+  if (facilityId) {
+    const facility = facilityById(state, facilityId);
+    if (fields.category === "defender" && facility.catalogId === "barrack") {
+      const housed = defendersOf(state, facility.id).filter((item) => item.id !== person.id).length;
+      if (housed + 1 > barrackCap(facility)) {
+        throw new RuleError("barrack_cap", `This barrack houses ${barrackCap(facility)}, not ${housed + 1}.`);
+      }
+    }
+  } else if (fields.category === "defender" && (!person.status || person.status === "active")) {
+    throw new RuleError("facility_held", "A defender stays housed until you change the defender count. The assignment was not cleared.");
+  }
+  const oldFacility = person.facilityId || null;
+  person.name = fields.name;
+  person.role = fields.role;
+  person.summary = fields.summary;
+  person.link = fields.link;
+  person.category = fields.category;
+  person.facilityId = facilityId;
+  return finish(
+    state,
+    command,
+    { personId: person.id, facilityId },
+    `DM correction: assigned roster ${person.id} ("${person.name || "an unnamed person"}") from "${oldFacility || ""}" to "${facilityId || ""}". Cash was not changed.`,
+  );
 }
 
 function recordDefenders(state, command) {
@@ -1541,6 +1910,20 @@ function importAccept(state, command) {
     return rosterSave(state, { ...command, type: "roster_save", person: item.person });
   }
   throw new RuleError("import_blocked", "That review item cannot be applied automatically.");
+}
+
+export function facilityClosureFacts(state, facilityId) {
+  const people = activeAt(state, facilityId);
+  const work = facilityWork(state, facilityId);
+  return {
+    defenders: people.filter((person) => person.category === "defender").length,
+    lieutenants: people.filter((person) => person.category === "lieutenant").length,
+    hirelings: people.filter((person) => person.category === "hireling").length,
+    orders: work.orders.length,
+    tasks: work.tasks.length,
+    projects: work.projects.length,
+    events: work.events.length,
+  };
 }
 
 export function previewSpecials(unit) {

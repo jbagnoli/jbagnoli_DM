@@ -1,5 +1,5 @@
 import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, specialById, specialCap } from "./catalog.js";
-import { orderStartedDay } from "./rules.js";
+import { facilityClosureFacts, orderStartedDay } from "./rules.js";
 import { markSavingButtons } from "./save-feedback.js";
 import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
@@ -161,9 +161,78 @@ function renderDashboard(model) {
     </section>`;
 }
 
+function acquiredLabel(value) {
+  return {
+    level: "from level",
+    replacement: "level-up replacement",
+    dm_correction: "DM correction",
+    dm_override: "DM override",
+    inherited: "already owned",
+    starter: "starter",
+    built: "built",
+  }[value] || value || "";
+}
+
+function canManage(model) {
+  return model.mode !== "remote" || model.role === "dm";
+}
+
+function spaceChoices(facility) {
+  if (facility.kind !== "special") return ["cramped", "roomy", "vast"];
+  const spec = specialById(facility.catalogId);
+  if (!spec) return [facility.space];
+  if (spec.enlargeGp) return [...new Set([spec.space, "vast"])];
+  return [spec.space];
+}
+
+function spaceLabel(space) {
+  return { cramped: "Cramped", roomy: "Roomy", vast: "Vast" }[space] || space;
+}
+
+function swapChoices(state, unit, current) {
+  return SPECIALS.map((spec) => {
+    const reasons = [];
+    if (spec.id === current.catalogId) reasons.push("already this facility");
+    if (unit.level < spec.level) reasons.push(`needs level ${spec.level}`);
+    if (spec.prereq && !unit.capabilities.includes(spec.prereq)) reasons.push("missing prerequisite");
+    if (spec.unique && state.facilities.some((item) => item.catalogId === spec.id && item.status === "active" && item.id !== current.id)) reasons.push("already kept");
+    return { spec, reasons };
+  });
+}
+
+function closureBlocked(facts) {
+  return facts.defenders > 0 || facts.lieutenants > 0 || facts.events > 0;
+}
+
+function closureCopy(facts) {
+  const lines = [];
+  if (facts.defenders) lines.push("Change the defender count under More → Record existing state before this room can be removed or replaced. Nobody is deleted.");
+  if (facts.lieutenants) lines.push("Replace or release the lieutenants on the People page first. Nobody is deleted.");
+  if (facts.events) lines.push("Resolve the pending record that names this room first.");
+  return lines.join(" ");
+}
+
+function closureFields(facts, id) {
+  if (closureBlocked(facts)) {
+    return `<p id="room-block-${esc(id)}" class="banner warn">${esc(closureCopy(facts))}</p>`;
+  }
+  let html = "";
+  if (facts.hirelings) {
+    html += `<fieldset><legend>Hirelings in this room</legend>
+      <label><input type="radio" name="hirelings" value="release" required> Keep them on the roster with no room assigned</label>
+      <label><input type="radio" name="hirelings" value="archive"> Mark them released. The names stay, and they are not deleted</label>
+    </fieldset>`;
+  }
+  if (facts.orders || facts.tasks || facts.projects) {
+    html += `<label><input type="checkbox" name="cancelWork" value="on" required> Cancel the unfinished work. Do not pay it, and do not refund money already spent.</label>`;
+  }
+  return html;
+}
+
 function renderRooms(model) {
   const state = model.state;
   const unit = state.units[0];
+  const manage = canManage(model);
   const options = SPECIALS.map((spec) => {
     const reasons = [];
     if (unit.level < spec.level) reasons.push(`needs level ${spec.level}`);
@@ -173,13 +242,17 @@ function renderRooms(model) {
     if (full) reasons.push("cap is full");
     return { spec, reasons };
   });
+  const active = state.facilities.filter((item) => item.status !== "archived");
   return `<h2 class="with-mark">${mark("card")} Rooms</h2>
-    <div class="list">${state.facilities.map((item) => `<article class="facility card"><h3 class="with-mark">${facilityMark(specialById(item.catalogId))}<span>${esc(item.name)}</span></h3><p class="muted">${esc(item.kind)} · ${esc(item.space)} · ${esc(item.status)} · ${esc(item.acquired || "")}</p><p>${esc(specialById(item.catalogId)?.hint || "Basic room. No orders.")}</p></article>`).join("") || `<p class="muted">No rooms yet.</p>`}</div>
+    <p id="level-bank-note" class="muted">Adding a basic room uses time and money, unless you mark it as already owned. A special facility comes from the level cap, not from a purchase. Unused level-up replacements: ${unit.replacementBank}. Those are granted only when the level goes up after tracking starts. Removing a room, fixing a wrong room, or swapping a special facility before the next level is a DM correction. It is not the published once-per-level replacement, and it does not move cash.</p>
+    ${model.mode === "remote" && !model.role ? `<p class="banner warn">Your role could not be confirmed, so removing and replacing rooms stays off.</p>` : ""}
+    ${!manage && model.role ? `<p class="banner warn">You can add a room. Removing, replacing, and correcting rooms stays with the DM.</p>` : ""}
+    <div class="list">${active.map((item) => roomCard(model, item, unit, manage)).join("") || `<p class="muted">No rooms yet.</p>`}</div>
     <section class="panel stack" style="margin-top:14px"><h3>Add a special facility</h3>
       <form id="add-special" class="stack">
         <label>Facility <select id="catalogId" name="catalogId">${options.map(({ spec, reasons }) => `<option value="${spec.id}" ${reasons.length ? "disabled" : ""}>${esc(spec.name)} · level ${spec.level}${reasons.length ? ` (${esc(reasons.join(", "))})` : ""}</option>`).join("")}</select></label>
         <button class="primary" type="submit">Add without a build cost</button>
-        <p class="muted">The level cap is ${specialCap(unit.level)}. Replacements are granted only when the level goes up, not from the current level alone. Unused replacements: ${unit.replacementBank}.</p>
+        <p class="muted">The level cap is ${specialCap(unit.level)}. This add is refused when the cap is full. It does not spend a level-up replacement.</p>
       </form>
     </section>
     <section class="panel stack" style="margin-top:14px"><h3>Basic room</h3>
@@ -188,9 +261,130 @@ function renderRooms(model) {
         <label>Size <select id="space" name="space"><option value="cramped">Cramped · 500 GP · 20 days</option><option value="roomy">Roomy · 1,000 GP · 45 days</option><option value="vast">Vast · 3,000 GP · 125 days</option></select></label>
         <label><input id="inherited" name="inherited" type="checkbox"> Already part of the estate. Do not charge.</label>
         <button class="primary" type="submit">Add basic room</button>
+        <p class="muted">This is the published way to add a basic room. A DM correction that removes or replaces a room is on the room card, and it does not refund the cost.</p>
       </form>
     </section>
-    <section class="panel"><h3>Projects</h3>${state.projects.length ? `<ul>${state.projects.map((item) => `<li>${esc(item.name)} · ${esc(item.status)} · due day ${item.dueOrdinal ?? "unknown"} · ${item.gp || 0} GP</li>`).join("")}</ul>` : `<p class="muted">No building projects.</p>`}</section>`;
+    <section class="panel"><h3>Projects</h3>${renderProjects(model, manage)}</section>`;
+}
+
+function roomCard(model, item, unit, manage) {
+  const spec = specialById(item.catalogId);
+  const facts = facilityClosureFacts(model.state, item.id);
+  const open = model.roomAction?.id === item.id ? model.roomAction.mode : "";
+  const actions = manage ? `<div class="room-actions">
+      <button type="button" data-action="room-action" data-mode="edit" data-id="${esc(item.id)}">Edit</button>
+      <button type="button" data-action="room-action" data-mode="remove" data-id="${esc(item.id)}">Remove</button>
+      ${item.kind === "special"
+        ? `<button type="button" data-action="room-action" data-mode="correct" data-id="${esc(item.id)}">DM correction swap</button>
+           <button type="button" data-action="room-action" data-mode="level" data-id="${esc(item.id)}" ${unit.replacementBank > 0 ? "" : "disabled"} aria-describedby="level-bank-note">Level-up replacement</button>`
+        : `<button type="button" data-action="room-action" data-mode="replace-basic" data-id="${esc(item.id)}">Replace</button>`}
+    </div>` : "";
+  return `<article class="facility card"><h3 class="with-mark">${facilityMark(spec)}<span>${esc(item.name)}</span></h3>
+    <p class="muted">${esc(item.kind)} · ${esc(item.space)} · ${esc(item.status)}${item.acquired ? ` · ${esc(acquiredLabel(item.acquired))}` : ""}${item.note ? ` · ${esc(item.note)}` : ""}</p>
+    <p>${esc(spec?.hint || "Basic room. No orders.")}</p>
+    <p class="muted">${facts.hirelings ? `${facts.hirelings} hireling${facts.hirelings === 1 ? "" : "s"} assigned. ` : ""}${facts.defenders ? `${facts.defenders} defender${facts.defenders === 1 ? "" : "s"} housed. ` : ""}${facts.orders || facts.tasks || facts.projects ? "Unfinished work is still on this room." : ""}</p>
+    ${actions}
+    ${open === "edit" ? editRoomForm(item) : ""}
+    ${open === "remove" ? removeRoomForm(item, facts) : ""}
+    ${open === "level" ? levelSwapForm(model.state, unit, item, facts) : ""}
+    ${open === "correct" ? correctSwapForm(model.state, unit, item, facts) : ""}
+    ${open === "replace-basic" ? replaceBasicForm(item, facts) : ""}
+  </article>`;
+}
+
+function reasonField(id) {
+  return `<label for="${id}">Why this correction is being made <input id="${id}" name="reason" maxlength="400" required></label>`;
+}
+
+function editRoomForm(item) {
+  const spaces = spaceChoices(item);
+  const roomField = item.kind === "basic"
+    ? `<label for="room-type">Room <select id="room-type" name="roomId">${BASIC_ROOMS.map((room) => `<option value="${room.id}" ${room.id === item.catalogId ? "selected" : ""}>${esc(room.name)}</option>`).join("")}</select></label>`
+    : "";
+  return `<form id="edit-room" class="stack">
+    <h4>Edit this room</h4>
+    <input type="hidden" name="facilityId" value="${esc(item.id)}">
+    ${roomField}
+    <label for="room-space">Size <select id="room-space" name="space">${spaces.map((space) => `<option value="${space}" ${space === item.space ? "selected" : ""}>${esc(spaceLabel(space))}</option>`).join("")}</select></label>
+    <label for="room-note">Short note <input id="room-note" name="note" maxlength="160" value="${esc(item.note || "")}"></label>
+    ${reasonField("room-reason")}
+    <button class="primary" type="submit">Save room correction</button>
+    <button type="button" data-action="cancel-room-action">Cancel</button>
+    <p class="muted">This corrects the record. It does not start a build, charge an enlargement, or spend a level-up replacement. People assigned here stay assigned.</p>
+  </form>`;
+}
+
+function removeRoomForm(item, facts) {
+  const blocked = closureBlocked(facts);
+  return `<form id="remove-room" class="stack">
+    <h4>Remove this room</h4>
+    <input type="hidden" name="facilityId" value="${esc(item.id)}">
+    <p id="remove-room-note">The room is archived. It is not sold, and cash does not change. ${item.kind === "basic" ? "The published text does not give a price for removing a basic room." : "Special facilities are not sold."}</p>
+    ${closureFields(facts, item.id)}
+    ${reasonField("remove-reason")}
+    <button class="primary" type="submit" ${blocked ? "disabled" : ""} aria-describedby="remove-room-note">Archive this room</button>
+    <button type="button" data-action="cancel-room-action">Cancel</button>
+  </form>`;
+}
+
+function levelSwapForm(state, unit, item, facts) {
+  const choices = swapChoices(state, unit, item);
+  const ready = choices.some(({ reasons }) => reasons.length === 0);
+  const blocked = closureBlocked(facts) || unit.replacementBank < 1 || !ready;
+  return `<form id="level-replace" class="stack">
+    <h4>Level-up replacement</h4>
+    <input type="hidden" name="facilityId" value="${esc(item.id)}">
+    <p id="level-swap-note">The bastion rules allow one special-facility replacement each time this character gains a level after tracking starts. This spends one unused replacement. It is not a mid-level correction.</p>
+    <label for="level-catalog">Replace with <select id="level-catalog" name="catalogId">${choices.map(({ spec, reasons }) => `<option value="${spec.id}" ${reasons.length ? "disabled" : ""}>${esc(spec.name)}${reasons.length ? ` (${esc(reasons.join(", "))})` : ""}</option>`).join("")}</select></label>
+    ${closureFields(facts, item.id)}
+    <button class="primary" type="submit" ${blocked ? "disabled" : ""} aria-describedby="level-swap-note">Use one level-up replacement</button>
+    <button type="button" data-action="cancel-room-action">Cancel</button>
+  </form>`;
+}
+
+function correctSwapForm(state, unit, item, facts) {
+  const choices = swapChoices(state, unit, item);
+  const ready = choices.some(({ reasons }) => reasons.length === 0);
+  const blocked = closureBlocked(facts) || !ready;
+  return `<form id="correct-special" class="stack">
+    <h4>DM correction swap</h4>
+    <input type="hidden" name="facilityId" value="${esc(item.id)}">
+    <p id="correct-swap-note">This can fix a wrong choice or swap a special facility before the next level. It does not spend a level-up replacement, and it is not the published once-per-level procedure. The old room is archived. Cash does not change.</p>
+    <label for="correct-catalog">Replace with <select id="correct-catalog" name="catalogId">${choices.map(({ spec, reasons }) => `<option value="${spec.id}" ${reasons.length ? "disabled" : ""}>${esc(spec.name)}${reasons.length ? ` (${esc(reasons.join(", "))})` : ""}</option>`).join("")}</select></label>
+    ${closureFields(facts, item.id)}
+    ${reasonField("correct-reason")}
+    <button class="primary" type="submit" ${blocked ? "disabled" : ""} aria-describedby="correct-swap-note">Swap without a level-up replacement</button>
+    <button type="button" data-action="cancel-room-action">Cancel</button>
+  </form>`;
+}
+
+function replaceBasicForm(item, facts) {
+  const blocked = closureBlocked(facts);
+  return `<form id="replace-basic" class="stack">
+    <h4>Replace this basic room</h4>
+    <input type="hidden" name="facilityId" value="${esc(item.id)}">
+    <p id="replace-basic-note">DM correction. The old room is archived and the new one is recorded immediately, with no build and no refund. The published way to add a basic room is the form further down the page.</p>
+    <label for="replace-room">Room <select id="replace-room" name="roomId">${BASIC_ROOMS.map((room) => `<option value="${room.id}" ${room.id === item.catalogId ? "selected" : ""}>${esc(room.name)}</option>`).join("")}</select></label>
+    <label for="replace-space">Size <select id="replace-space" name="space">${["cramped", "roomy", "vast"].map((space) => `<option value="${space}" ${space === item.space ? "selected" : ""}>${esc(spaceLabel(space))}</option>`).join("")}</select></label>
+    ${closureFields(facts, item.id)}
+    ${reasonField("replace-basic-reason")}
+    <button class="primary" type="submit" ${blocked ? "disabled" : ""} aria-describedby="replace-basic-note">Replace this room</button>
+    <button type="button" data-action="cancel-room-action">Cancel</button>
+  </form>`;
+}
+
+function renderProjects(model, manage) {
+  const projects = (model.state.projects || []).filter((item) => item.status === "building");
+  if (!projects.length) return `<p class="muted">No building projects.</p>`;
+  return `<ul class="stack">${projects.map((item) => {
+    const cancelling = model.projectId === item.id;
+    const action = item.status === "building" && manage
+      ? (cancelling
+        ? `<form id="cancel-project" class="stack"><input type="hidden" name="projectId" value="${esc(item.id)}">${reasonField("project-reason")}<button class="primary" type="submit">Cancel this build</button><button type="button" data-action="cancel-project-close">Keep the build</button><p class="muted">The build will not finish. Money already spent is not refunded.</p></form>`
+        : `<button type="button" data-action="cancel-project" data-id="${esc(item.id)}">Cancel this build</button>`)
+      : "";
+    return `<li class="card"><span>${esc(item.name)} · ${esc(item.status)} · due day ${item.dueOrdinal ?? "unknown"} · ${item.gp || 0} GP</span>${action}</li>`;
+  }).join("")}</ul>`;
 }
 
 function personLabel(person) {
@@ -200,34 +394,69 @@ function personLabel(person) {
   return role ? `Unnamed (${role})` : "Unnamed";
 }
 
+function assignedRoom(state, person) {
+  if (!person.facilityId) return "";
+  const facility = state.facilities.find((item) => item.id === person.facilityId && item.status !== "archived");
+  return facility ? facility.name : "Assignment does not match an active room";
+}
+
 function renderPeople(model) {
   const people = model.state.roster;
   const categories = ["household", "hireling", "defender", "guest", "lieutenant", "creature"];
   const editing = people.find((person) => person.id === model.editPersonId) || null;
-  const locked = editing && ((!editing.status || editing.status === "active") && (editing.category === "defender" || editing.protectsOnce || (editing.facilityId && model.state.facilities.some((item) => item.id === editing.facilityId && item.status !== "archived"))));
-  return `<h2 class="with-mark">${mark("pair")} People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion. An editor or the DM can add a person and name them later. Only the DM can remove a name entered by mistake.</p>
+  const replacing = people.find((person) => person.id === model.replacePersonId) || null;
+  const manage = canManage(model);
+  const locked = (person) => Boolean(person && ((!person.status || person.status === "active") && (person.category === "defender" || person.protectsOnce || (person.facilityId && model.state.facilities.some((item) => item.id === person.facilityId && item.status !== "archived")))));
+  const editingLocked = locked(editing);
+  const facilities = model.state.facilities.filter((item) => item.status !== "archived");
+  return `<h2 class="with-mark">${mark("pair")} People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion. An editor or the DM can add a person with no name yet and fill the name in later. Only the DM can remove a mistaken name, replace someone, or move a person to another room.</p>
+    ${model.mode === "remote" && !model.role ? `<p class="banner warn">Your role could not be confirmed, so removing and replacing people stays off.</p>` : ""}
+    ${!manage && model.role ? `<p class="banner warn">You can add someone and name a placeholder later. Removing, replacing, and moving people stays with the DM.</p>` : ""}
     <div class="list">${people.map((person) => {
       const confirming = model.confirmPersonId === person.id;
       const noteId = `remove-person-${person.id}`;
       const unnamed = !String(person.name || "").trim();
-      const action = confirming
-        ? `<span class="confirm-row"><span id="${esc(noteId)}">Remove this entry? Only the DM can do this.</span><button type="button" data-action="remove-person" data-id="${esc(person.id)}" aria-describedby="${esc(noteId)}">Remove this person</button><button type="button" data-action="cancel-remove-person">Cancel</button></span>`
-        : `<span class="confirm-row"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button><button type="button" data-action="confirm-remove-person" data-id="${esc(person.id)}">Remove</button></span>`;
-      return `<article class="person card"><h3>${esc(personLabel(person))}</h3><p><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span>${unnamed ? ` <span class="tag">Unnamed</span>` : ""}</p>${person.summary ? `<p>${esc(person.summary)}</p>` : `<p>${esc(person.role)}</p>`}${person.link ? `<p><a href="${esc(person.link)}">External note</a></p>` : ""}${action}</article>`;
+      const room = assignedRoom(model.state, person);
+      const action = !manage
+        ? `<span class="confirm-row"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button></span>`
+        : (confirming
+          ? `<span class="confirm-row"><span id="${esc(noteId)}">Remove this entry? Replacement is the other choice when this person still holds a post. Only the DM can do either.</span><button type="button" data-action="remove-person" data-id="${esc(person.id)}" aria-describedby="${esc(noteId)}">Remove this person</button><button type="button" data-action="cancel-remove-person">Cancel</button></span>`
+          : `<span class="confirm-row"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button><button type="button" data-action="replace-person" data-id="${esc(person.id)}">Replace</button><button type="button" data-action="confirm-remove-person" data-id="${esc(person.id)}">Remove</button></span>`);
+      return `<article class="person card"><h3>${esc(personLabel(person))}</h3><p><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span>${unnamed ? ` <span class="tag">Unnamed</span>` : ""}</p>${person.summary ? `<p>${esc(person.summary)}</p>` : `<p>${esc(person.role)}</p>`}${room ? `<p class="muted">Room: ${esc(room)}</p>` : ""}${person.link ? `<p><a href="${esc(person.link)}">External note</a></p>` : ""}${action}</article>`;
     }).join("") || `<p class="muted">No one is named yet.</p>`}</div>
     <form id="person" class="panel stack" style="margin-top:14px">
       <h3>${editing ? "Edit this person" : "Add someone"}</h3>
       ${editing ? `<input type="hidden" name="personId" value="${esc(editing.id)}">` : ""}
       <label for="person-name">Name <input id="person-name" name="name" maxlength="80" value="${esc(editing?.name || "")}" placeholder="Leave blank if the name is not known yet"></label>
-      <label for="person-category">Category <select id="person-category" name="category" ${locked ? "disabled" : ""}>${categories.map((category) => `<option ${editing?.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></label>
-      ${locked ? `<input type="hidden" name="category" value="${esc(editing.category)}"><p class="muted">The category stays put while this person is a defender, assigned to a facility, or set to protect the bastion.</p>` : ""}
+      <label for="person-category">Category <select id="person-category" name="category" ${editingLocked ? "disabled" : ""}>${categories.map((category) => `<option ${editing?.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></label>
+      ${editingLocked ? `<input type="hidden" name="category" value="${esc(editing.category)}"><p class="muted">The category stays put while this person is a defender, assigned to a facility, or set to protect the bastion.</p>` : ""}
       <label for="person-role">Role <input id="person-role" name="role" maxlength="80" value="${esc(editing?.role || "")}"></label>
       <label for="person-summary">Short summary <input id="person-summary" name="summary" maxlength="160" value="${esc(editing?.summary || "")}"></label>
       <label for="person-link">Optional link <input id="person-link" name="link" type="url" placeholder="https://" value="${esc(editing?.link || "")}"></label>
+      ${editing && manage ? `<label for="person-facility">Room <select id="person-facility" name="facilityId"><option value="">Not assigned</option>${facilities.map((facility) => `<option value="${esc(facility.id)}" ${editing.facilityId === facility.id ? "selected" : ""}>${esc(facility.name)}</option>`).join("")}</select></label>
+        <label for="person-reason">Reason, required when the room changes <input id="person-reason" name="reason" maxlength="400"></label>` : ""}
       <button class="primary" type="submit">${editing ? "Save changes" : "Save person"}</button>
       ${editing ? `<button type="button" data-action="cancel-edit-person">Cancel editing</button>` : ""}
-      <p class="muted">A blank name is kept as an unnamed placeholder, shown as Unnamed (role), until someone fills it in. The same record id is kept, so a facility assignment still points at this person.</p>
-    </form>`;
+      <p class="muted">A blank name is kept as an unnamed placeholder, shown as Unnamed (role), until someone fills it in. Saving a name keeps the same record id, so a room assignment still points at this person.</p>
+    </form>
+    ${replacing ? renderReplacePerson(replacing, locked(replacing), categories) : ""}`;
+}
+
+function renderReplacePerson(person, locked, categories) {
+  return `<form id="replace-person" class="panel stack" style="margin-top:14px">
+    <h3>Replace ${esc(personLabel(person))}</h3>
+    <input type="hidden" name="personId" value="${esc(person.id)}">
+    <p id="replace-person-note">The old name stays on the roster as replaced. The new person keeps the same post, including a blank name if you do not know it yet. Cash does not change. Only the DM can do this.</p>
+    <label for="replace-person-name">Name <input id="replace-person-name" name="name" maxlength="80" placeholder="Leave blank if the name is not known yet"></label>
+    <label for="replace-person-category">Category <select id="replace-person-category" name="category" ${locked ? "disabled" : ""}>${categories.map((category) => `<option ${person.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></label>
+    ${locked ? `<input type="hidden" name="category" value="${esc(person.category)}"><p class="muted">The category stays put while this person is a defender, assigned to a facility, or set to protect the bastion.</p>` : ""}
+    <label for="replace-person-role">Role <input id="replace-person-role" name="role" maxlength="80" value="${esc(person.role || "")}"></label>
+    <label for="replace-person-summary">Short summary <input id="replace-person-summary" name="summary" maxlength="160" value="${esc(person.summary || "")}"></label>
+    <label for="replace-person-link">Optional link <input id="replace-person-link" name="link" type="url" placeholder="https://" value="${esc(person.link || "")}"></label>
+    ${reasonField("replace-person-reason")}
+    <button class="primary" type="submit" aria-describedby="replace-person-note">Replace this person</button>
+    <button type="button" data-action="cancel-replace-person">Cancel</button>
+  </form>`;
 }
 
 function renderTurn(model) {
@@ -413,7 +642,7 @@ function renderHelp() {
   return `<h2 class="with-mark">${mark("star")} What the tracker does</h2>
     <div class="panel"><h3>Worked out for you</h3><ul>
       <li>Special facility cap, prerequisites, and the facilities that can repeat.</li>
-      <li>One replacement each time a level is gained after tracking starts.</li>
+      <li>One published replacement each time a level is gained after tracking starts. A mid-level swap is a separate DM correction and does not spend that replacement.</li>
       <li>Basic room price and time, with no charge for rooms you mark as already owned.</li>
       <li>Barrack recruiting, up to 4, inside the 12 or 25 bed limit.</li>
       <li>Storehouse buying and selling, including the 7-day wait. 500 GP of goods sells for 550 GP at level 5.</li>
@@ -425,6 +654,8 @@ function renderHelp() {
       <li>Crafting time and price, magic items, poisons, mounts, and treasure names.</li>
       <li>Research facts, rumors, charms, armies, and theater results.</li>
       <li>Whether a bastion has truly fallen.</li>
+      <li>What to do with hirelings when a room is removed. The tracker asks you to keep them unassigned or mark them released. It does not delete them, pay unfinished work, or refund money already spent.</li>
+      <li>Defender counts. Remove a room only after the count has been changed. The room action will refuse while defenders are still housed there.</li>
       <li>Old notes that do not say whether an order finished.</li>
       <li>Defenders, loans, goods already committed, and an order that is already running. Enter those on Record existing state. That screen does not run a turn or move cash.</li>
     </ul><p class="muted">Source for the mechanics: the bastions chapter of the Dungeon Master's Guide. This screen does not reprint that chapter.</p></div>`;

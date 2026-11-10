@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { saleProceeds, specialCap } from "./catalog.js";
 import { practiceState } from "./demo.js";
-import { configured, isSecretKey, serviceRoleRejected } from "./remote.js";
+import { accessUserId, configured, isSecretKey, serviceRoleRejected } from "./remote.js";
 import { canAccept, markAgainstRecord, parseReview } from "./review.js";
 import { beginSave, failSave, markSavingButtons, succeedSave } from "./save-feedback.js";
 import { render } from "./render.js";
@@ -518,6 +518,7 @@ test("an editor can name an unnamed hireling without changing the id or assignme
     category: "hireling",
     summary: "Works the forge",
     link: "",
+    facilityId: "somewhere-else",
   }).state;
   assert.equal(edited.roster.at(-1).id, placeholder.id);
   assert.equal(edited.roster.at(-1).name, "Ada Moss");
@@ -586,10 +587,271 @@ test("save feedback names a practice save differently from a shared save", () =>
   assert.match(buttons, /disabled>Saving…/);
 });
 
+test("the DM can correct rooms without spending a level-up replacement or moving cash", () => {
+  let state = emptyEstate({ name: "Practice Hall" });
+  state = apply(state, { type: "add_basic", unitId: "unit-party", roomId: "bedroom", space: "cramped", inherited: true }).state;
+  const bedroom = state.facilities[0];
+  const edited = apply(state, {
+    type: "edit_facility",
+    facilityId: bedroom.id,
+    roomId: "parlor",
+    space: "roomy",
+    note: "South wall",
+    reason: "The import named the wrong room.",
+  }).state;
+  assert.equal(edited.facilities[0].id, bedroom.id);
+  assert.equal(edited.facilities[0].catalogId, "parlor");
+  assert.equal(edited.facilities[0].space, "roomy");
+  assert.equal(edited.facilities[0].note, "South wall");
+  assert.equal(edited.finance.cashKnown, false);
+  assert.equal(edited.finance.cashGp, null);
+  assert.match(edited.audit.at(-1).summary, /DM correction/);
+  assert.match(edited.audit.at(-1).summary, /not a level-up replacement/);
+  assert.throws(() => apply(state, { type: "edit_facility", actorRole: "editor", facilityId: bedroom.id, note: "No", reason: "An editor tried." }), (error) => error.code === "forbidden");
+
+  state = party();
+  state = add(state, "barrack");
+  state = add(state, "storehouse");
+  assert.equal(state.units[0].replacementBank, 0);
+  const barrack = state.facilities.find((item) => item.catalogId === "barrack");
+  assert.throws(() => apply(state, {
+    type: "replace_special",
+    unitId: "unit-party",
+    facilityId: barrack.id,
+    catalogId: "library",
+  }), (error) => error.code === "no_replacement");
+  const swapped = apply(state, {
+    type: "correct_special",
+    unitId: "unit-party",
+    facilityId: barrack.id,
+    catalogId: "library",
+    reason: "The barrack was the wrong choice.",
+  }).state;
+  assert.equal(swapped.units[0].replacementBank, 0);
+  assert.equal(swapped.facilities.some((item) => item.catalogId === "barrack"), false);
+  assert.equal(swapped.facilities.some((item) => item.catalogId === "library" && item.acquired === "dm_correction"), true);
+  assert.equal(swapped.archive[0].catalogId, "barrack");
+  assert.equal(swapped.finance.cashKnown, false);
+  assert.match(swapped.audit.at(-1).summary, /not the published once-per-level swap/);
+  assert.throws(() => apply(state, {
+    type: "correct_special",
+    actorRole: "editor",
+    unitId: "unit-party",
+    facilityId: barrack.id,
+    catalogId: "library",
+    reason: "An editor tried.",
+  }), (error) => error.code === "forbidden");
+  assert.throws(() => apply(swapped, {
+    type: "correct_special",
+    unitId: "unit-party",
+    facilityId: swapped.facilities.find((item) => item.catalogId === "library").id,
+    catalogId: "arcane_study",
+    reason: "They do not qualify.",
+  }), (error) => error.code === "prerequisite");
+});
+
+test("removing or replacing a room archives it and does not leave hirelings or unpaid work attached", () => {
+  let state = emptyEstate({ name: "Practice Hall" });
+  state = apply(state, { type: "add_basic", unitId: "unit-party", roomId: "parlor", space: "cramped", inherited: true }).state;
+  const parlor = state.facilities[0];
+  const removed = apply(state, { type: "remove_facility", facilityId: parlor.id, reason: "Recorded in the wrong wing." }).state;
+  assert.equal(removed.facilities.length, 0);
+  assert.equal(removed.archive[0].id, parlor.id);
+  assert.equal(removed.archive[0].status, "archived");
+  assert.equal(removed.finance.cashKnown, false);
+  assert.equal(removed.finance.cashGp, null);
+  assert.match(removed.audit.at(-1).summary, /not a sale/);
+  assert.throws(() => apply(state, { type: "remove_facility", actorRole: "editor", facilityId: parlor.id, reason: "No." }), (error) => error.code === "forbidden");
+
+  state = party();
+  state = add(state, "smithy");
+  const smithy = state.facilities[0];
+  state = apply(state, {
+    type: "roster_save",
+    person: { name: "  ", category: "hireling", role: "Smith", facilityId: smithy.id, unitId: "unit-party" },
+  }).state;
+  assert.throws(() => apply(state, { type: "remove_facility", facilityId: smithy.id, reason: "Wrong shop." }), (error) => error.code === "hirelings_unresolved");
+  const released = apply(state, { type: "remove_facility", facilityId: smithy.id, reason: "Wrong shop.", hirelings: "release" }).state;
+  assert.equal(released.facilities.length, 0);
+  assert.equal(released.roster.length, 1);
+  assert.equal(released.roster[0].name, "");
+  assert.equal(released.roster[0].status, "active");
+  assert.equal(released.roster[0].facilityId, null);
+  const archived = apply(state, { type: "remove_facility", facilityId: smithy.id, reason: "Wrong shop.", hirelings: "archive" }).state;
+  assert.equal(archived.roster[0].status, "released");
+  assert.equal(archived.roster[0].facilityId, null);
+  assert.match(archived.audit.at(-1).summary, /not deleted/);
+
+  state = withCash(party(), 8000);
+  state = add(state, "storehouse");
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  state = apply(state, { type: "record_goods", name: "Wool", standardGp: 500, unitId: "unit-party" }).state;
+  const lot = state.goods[0];
+  state = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [{ facilityId: store.id, suborder: "sell", lotId: lot.id, standardGp: 500 }],
+  }).state;
+  const cash = state.finance.cashGp;
+  assert.throws(() => apply(state, { type: "correct_special", unitId: "unit-party", facilityId: store.id, catalogId: "library", reason: "Swap during a sale." }), (error) => error.code === "work_unresolved");
+  const cancelled = apply(state, {
+    type: "correct_special",
+    unitId: "unit-party",
+    facilityId: store.id,
+    catalogId: "library",
+    reason: "Swap during a sale.",
+    cancelWork: true,
+  }).state;
+  assert.equal(cancelled.finance.cashGp, cash);
+  assert.equal(cancelled.goods[0].reservedGp, 0);
+  assert.equal(cancelled.orders.some((order) => order.facilityId === store.id && order.status === "cancelled"), true);
+  assert.equal(cancelled.tasks.some((task) => task.settled), false);
+  assert.equal(cancelled.facilities.some((item) => item.id === store.id), false);
+  assert.equal(cancelled.ledger.length, state.ledger.length);
+
+  state = withCash(party(), 8000);
+  state = add(state, "storehouse");
+  const buyer = state.facilities.find((item) => item.catalogId === "storehouse");
+  state = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [{ facilityId: buyer.id, suborder: "buy", standardGp: 100, goodsName: "Nails" }],
+  }).state;
+  const spent = state.finance.cashGp;
+  assert.equal(spent, 7900);
+  const dropped = apply(state, { type: "remove_facility", facilityId: buyer.id, reason: "The buy was the wrong order.", cancelWork: true }).state;
+  assert.equal(dropped.finance.cashGp, spent);
+  assert.equal(dropped.goods.some((item) => item.name === "Nails"), false);
+  assert.match(dropped.audit.at(-1).summary, /not refunded/);
+
+  state = party();
+  state = add(state, "barrack");
+  const housed = state.facilities[0];
+  state = apply(state, { type: "record_defenders", facilityId: housed.id, count: 2, names: ["Pell Ash", "Sarn Wick"] }).state;
+  assert.throws(() => apply(state, { type: "remove_facility", facilityId: housed.id, reason: "Empty the barracks.", hirelings: "release" }), (error) => error.code === "facility_held");
+  assert.equal(state.facilities[0].status, "active");
+  assert.equal(state.roster.filter((person) => person.category === "defender" && person.status === "active").length, 2);
+});
+
+test("a basic-room replacement and a cancelled build do not invent a refund", () => {
+  let state = withCash(party(), 2000);
+  state = apply(state, { type: "add_basic", unitId: "unit-party", roomId: "parlor", space: "cramped" }).state;
+  assert.equal(state.finance.cashGp, 1500);
+  const project = state.projects[0];
+  const cancelled = apply(state, { type: "cancel_project", projectId: project.id, reason: "That parlor was a misclick." }).state;
+  assert.equal(cancelled.finance.cashGp, 1500);
+  assert.equal(cancelled.projects[0].status, "cancelled");
+  assert.equal(cancelled.facilities.some((item) => item.catalogId === "parlor"), false);
+  assert.throws(() => apply(state, { type: "cancel_project", actorRole: "reader", projectId: project.id, reason: "No." }), (error) => error.code === "forbidden");
+
+  state = apply(state, { type: "add_basic", unitId: "unit-party", roomId: "kitchen", space: "cramped", inherited: true }).state;
+  const kitchen = state.facilities.find((item) => item.catalogId === "kitchen");
+  const replaced = apply(state, {
+    type: "replace_basic",
+    facilityId: kitchen.id,
+    roomId: "storage",
+    space: "roomy",
+    reason: "It was a storeroom.",
+  }).state;
+  assert.equal(replaced.finance.cashGp, 1500);
+  assert.equal(replaced.facilities.some((item) => item.id === kitchen.id), false);
+  assert.equal(replaced.facilities.some((item) => item.catalogId === "storage" && item.acquired === "dm_correction"), true);
+  assert.match(replaced.audit.at(-1).summary, /not the published way to add a basic room/);
+});
+
+test("the DM can replace a person in place, including an unnamed successor", () => {
+  let state = party();
+  state = add(state, "garden");
+  const garden = state.facilities[0];
+  state = apply(state, {
+    type: "roster_save",
+    person: { name: "Yard hand", category: "hireling", role: "Yard", facilityId: garden.id, unitId: "unit-party" },
+  }).state;
+  const hired = state.roster.find((person) => person.name === "Yard hand");
+  assert.throws(() => apply(state, { type: "replace_person", actorRole: "editor", personId: hired.id, name: "Nell", reason: "Wrong name." }), (error) => error.code === "forbidden");
+  const replaced = apply(state, {
+    type: "replace_person",
+    personId: hired.id,
+    name: "  ",
+    category: "hireling",
+    role: "Yard",
+    reason: "The name was entered before we knew it.",
+  }).state;
+  const oldOne = replaced.roster.find((person) => person.id === hired.id);
+  const next = replaced.roster.find((person) => person.id !== hired.id);
+  assert.equal(oldOne.status, "replaced");
+  assert.equal(oldOne.facilityId, null);
+  assert.equal(next.name, "");
+  assert.equal(next.status, "active");
+  assert.equal(next.facilityId, garden.id);
+  assert.equal(replaced.finance.cashKnown, false);
+  const named = apply(replaced, {
+    type: "edit_person",
+    actorRole: "editor",
+    personId: next.id,
+    name: "Nell Cooper",
+    role: "Yard",
+    category: "hireling",
+  }).state;
+  assert.equal(named.roster.find((person) => person.id === next.id).name, "Nell Cooper");
+  assert.equal(named.roster.find((person) => person.id === next.id).facilityId, garden.id);
+
+  state = party();
+  state = add(state, "barrack");
+  const barrack = state.facilities[0];
+  state = apply(state, { type: "record_defenders", facilityId: barrack.id, count: 1, names: ["Pell Ash"] }).state;
+  const defender = state.roster.find((person) => person.category === "defender");
+  assert.throws(() => apply(state, { type: "remove_person", personId: defender.id }), (error) => error.code === "person_held");
+  const guard = apply(state, {
+    type: "replace_person",
+    personId: defender.id,
+    name: "",
+    category: "defender",
+    role: "Defender",
+    reason: "The housed defender was misnamed.",
+  }).state;
+  assert.equal(guard.roster.filter((person) => person.category === "defender" && person.status === "active").length, 1);
+  assert.equal(guard.roster.find((person) => person.status === "active").facilityId, barrack.id);
+  assert.throws(() => apply(state, {
+    type: "assign_person",
+    actorRole: "editor",
+    personId: defender.id,
+    facilityId: null,
+    reason: "Editors cannot move people.",
+  }), (error) => error.code === "forbidden");
+});
+
+test("room and people screens keep DM corrections distinct from the published replacement", () => {
+  const state = practiceState();
+  const html = render({ mode: "sandbox", view: "rooms", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(html, /DM correction/);
+  assert.match(html, /Level-up replacement/);
+  assert.match(html, /not the published once-per-level replacement/);
+  assert.match(html, /Remove/);
+  assert.match(html, /2 defenders housed/);
+  assert.match(html, />Edit</);
+  const editor = render({ mode: "remote", role: "editor", view: "rooms", state, error: "", notice: "", configured: true, serviceRole: false });
+  assert.match(editor, /stays with the DM/);
+  assert.doesNotMatch(editor, /Archive this room/);
+  assert.doesNotMatch(editor, /DM correction swap/);
+  const people = render({ mode: "sandbox", view: "people", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(people, /Leave blank if the name is not known yet/);
+  assert.match(people, /Replace/);
+  const reader = render({ mode: "remote", role: "reader", view: "people", state, error: "", notice: "", configured: true, serviceRole: false });
+  assert.doesNotMatch(reader, /data-action="remove-person"/);
+  assert.doesNotMatch(reader, /data-action="replace-person"/);
+  assert.match(reader, /data-action="edit-person"/);
+});
+
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/006_manage_rooms_people.sql"), "utf8");
+  const prior = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
   const cases = [...rules.matchAll(/case "([a-z_]+)":/g)].map((match) => match[1]);
   assert.equal(new Set(cases).size, cases.length);
   const block = migration.match(/function public\.handled_command_types\(\)[\s\S]*?array\[([\s\S]*?)\]::text\[\]/);
@@ -608,9 +870,12 @@ test("the server handles every command the client can send", async () => {
   }
   for (const type of sent) assert.ok(server.includes(type), type);
   const updates = migration.match(/update\s+public\.estates/gi) || [];
-  assert.deepEqual(updates, ["update public.estates", "update public.estates"]);
+  assert.deepEqual(updates, ["update public.estates"]);
   assert.match(migration, /update public\.estates set document = doc, revision = rev where id = eid/);
-  assert.match(migration, /update public\.estates\s+set document = public\._bastion_move_started_turn\(document\)\s+where document::text like '%startedTurn%'/);
+  assert.doesNotMatch(migration, /_bastion_move_started_turn/);
+  const priorUpdates = prior.match(/update\s+public\.estates/gi) || [];
+  assert.deepEqual(priorUpdates, ["update public.estates", "update public.estates"]);
+  assert.match(prior, /update public\.estates\s+set document = public\._bastion_move_started_turn\(document\)\s+where document::text like '%startedTurn%'/);
 });
 
 test("publishable keys are accepted and secret keys are refused", () => {
@@ -627,6 +892,9 @@ test("publishable keys are accepted and secret keys are refused", () => {
   assert.equal(serviceRoleRejected(secret), true);
   assert.equal(configured(legacySecret), false);
   assert.equal(configured({ supabaseUrl: url, supabaseAnonKey: "" }), false);
+  const subject = btoa(JSON.stringify({ sub: "31313131-3131-3131-3131-313131313131" }));
+  assert.equal(accessUserId(`aaa.${subject}.sig`), "31313131-3131-3131-3131-313131313131");
+  assert.equal(accessUserId("not-a-token"), "");
 });
 
 test("practice sandbox renders and is labeled as not the group record", () => {
