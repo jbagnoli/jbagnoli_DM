@@ -267,7 +267,7 @@ begin
   doc := out->'document';
   if not exists (
     select 1 from jsonb_array_elements(doc->'orders') elem
-    where elem->>'facilityId' = store_id and elem->>'status' = 'in_progress' and coalesce((elem->>'recorded')::boolean, false) and (elem->>'startedTurn')::int = 2
+    where elem->>'facilityId' = store_id and elem->>'status' = 'in_progress' and coalesce((elem->>'recorded')::boolean, false) and (elem->>'startedDay')::int = 2 and elem->>'startedTurn' is null
   ) then
     perform public._cmd_fail('in-progress order');
   end if;

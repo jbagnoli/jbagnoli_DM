@@ -1,4 +1,6 @@
 import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, specialById, specialCap } from "./catalog.js";
+import { orderStartedDay } from "./rules.js";
+import { markSavingButtons } from "./save-feedback.js";
 import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
 export function esc(value) {
@@ -21,9 +23,19 @@ function dayLine(state) {
   return state.clock.label ? `${state.clock.label} · day ${state.clock.ordinal}` : `Day ${state.clock.ordinal}`;
 }
 
+function saveFeedback(model) {
+  const save = model.save;
+  if (!save || !save.message) return "";
+  const tone = save.status === "failure" ? "error" : save.status === "pending" ? "pending" : "ok";
+  const live = save.status === "failure" ? "assertive" : "polite";
+  const role = save.status === "failure" ? "alert" : "status";
+  return `<p id="save-feedback" class="save-feedback" data-tone="${tone}" role="${role}" aria-live="${live}" tabindex="-1">${esc(save.message)}</p>`;
+}
+
 export function render(model) {
   if (model.mode === "gate") return renderGate(model);
-  return `${shellStart(model)}${view(model)}${shellEnd(model)}`;
+  const html = `${shellStart(model)}${saveFeedback(model)}${view(model)}${shellEnd(model)}`;
+  return model.save?.status === "pending" ? markSavingButtons(html, model.save.source) : html;
 }
 
 function coverArt(strip) {
@@ -181,18 +193,40 @@ function renderRooms(model) {
     <section class="panel"><h3>Projects</h3>${state.projects.length ? `<ul>${state.projects.map((item) => `<li>${esc(item.name)} · ${esc(item.status)} · due day ${item.dueOrdinal ?? "unknown"} · ${item.gp || 0} GP</li>`).join("")}</ul>` : `<p class="muted">No building projects.</p>`}</section>`;
 }
 
+function personLabel(person) {
+  const name = String(person.name || "").trim();
+  if (name) return name;
+  const role = String(person.role || "").trim();
+  return role ? `Unnamed (${role})` : "Unnamed";
+}
+
 function renderPeople(model) {
   const people = model.state.roster;
-  return `<h2 class="with-mark">${mark("pair")} People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion.</p>
-    <div class="list">${people.map((person) => `<article class="person card"><h3>${esc(person.name)}</h3><p><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span></p>${person.summary ? `<p>${esc(person.summary)}</p>` : `<p>${esc(person.role)}</p>`}${person.link ? `<p><a href="${esc(person.link)}">External note</a></p>` : ""}</article>`).join("") || `<p class="muted">No one is named yet.</p>`}</div>
+  const categories = ["household", "hireling", "defender", "guest", "lieutenant", "creature"];
+  const editing = people.find((person) => person.id === model.editPersonId) || null;
+  const locked = editing && ((!editing.status || editing.status === "active") && (editing.category === "defender" || editing.protectsOnce || (editing.facilityId && model.state.facilities.some((item) => item.id === editing.facilityId && item.status !== "archived"))));
+  return `<h2 class="with-mark">${mark("pair")} People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion. An editor or the DM can add a person and name them later. Only the DM can remove a name entered by mistake.</p>
+    <div class="list">${people.map((person) => {
+      const confirming = model.confirmPersonId === person.id;
+      const noteId = `remove-person-${person.id}`;
+      const unnamed = !String(person.name || "").trim();
+      const action = confirming
+        ? `<span class="confirm-row"><span id="${esc(noteId)}">Remove this entry? Only the DM can do this.</span><button type="button" data-action="remove-person" data-id="${esc(person.id)}" aria-describedby="${esc(noteId)}">Remove this person</button><button type="button" data-action="cancel-remove-person">Cancel</button></span>`
+        : `<span class="confirm-row"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button><button type="button" data-action="confirm-remove-person" data-id="${esc(person.id)}">Remove</button></span>`;
+      return `<article class="person card"><h3>${esc(personLabel(person))}</h3><p><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span>${unnamed ? ` <span class="tag">Unnamed</span>` : ""}</p>${person.summary ? `<p>${esc(person.summary)}</p>` : `<p>${esc(person.role)}</p>`}${person.link ? `<p><a href="${esc(person.link)}">External note</a></p>` : ""}${action}</article>`;
+    }).join("") || `<p class="muted">No one is named yet.</p>`}</div>
     <form id="person" class="panel stack" style="margin-top:14px">
-      <h3>Add someone</h3>
-      <label>Name <input id="person-name" name="name" required maxlength="80"></label>
-      <label>Category <select id="person-category" name="category"><option>household</option><option>hireling</option><option>defender</option><option>guest</option><option>lieutenant</option><option>creature</option></select></label>
-      <label>Role <input id="person-role" name="role" maxlength="80"></label>
-      <label>Short summary <input id="person-summary" name="summary" maxlength="160"></label>
-      <label>Optional link <input id="person-link" name="link" type="url" placeholder="https://"></label>
-      <button class="primary" type="submit">Save person</button>
+      <h3>${editing ? "Edit this person" : "Add someone"}</h3>
+      ${editing ? `<input type="hidden" name="personId" value="${esc(editing.id)}">` : ""}
+      <label for="person-name">Name <input id="person-name" name="name" maxlength="80" value="${esc(editing?.name || "")}" placeholder="Leave blank if the name is not known yet"></label>
+      <label for="person-category">Category <select id="person-category" name="category" ${locked ? "disabled" : ""}>${categories.map((category) => `<option ${editing?.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></label>
+      ${locked ? `<input type="hidden" name="category" value="${esc(editing.category)}"><p class="muted">The category stays put while this person is a defender, assigned to a facility, or set to protect the bastion.</p>` : ""}
+      <label for="person-role">Role <input id="person-role" name="role" maxlength="80" value="${esc(editing?.role || "")}"></label>
+      <label for="person-summary">Short summary <input id="person-summary" name="summary" maxlength="160" value="${esc(editing?.summary || "")}"></label>
+      <label for="person-link">Optional link <input id="person-link" name="link" type="url" placeholder="https://" value="${esc(editing?.link || "")}"></label>
+      <button class="primary" type="submit">${editing ? "Save changes" : "Save person"}</button>
+      ${editing ? `<button type="button" data-action="cancel-edit-person">Cancel editing</button>` : ""}
+      <p class="muted">A blank name is kept as an unnamed placeholder, shown as Unnamed (role), until someone fills it in. The same record id is kept, so a facility assignment still points at this person.</p>
     </form>`;
 }
 
@@ -287,7 +321,7 @@ function renderSettings(model) {
       <p id="level-fit" class="muted">This unit has ${specials.length} special ${specials.length === 1 ? "facility" : "facilities"}. Level ${unit.level} allows ${specialCap(unit.level)}. ${highest ? `The highest requirement among them is level ${highest}.` : "No facility requirement yet."} A shut facility still counts. Saving a level that is too low for these rooms is refused.</p>
       <label><input id="grant-replacements" name="grantReplacements" type="checkbox"> This is a level-up. Add one replacement for each level gained.</label>
       <label>Turn length in in-game days <input id="cadence" name="cadenceDays" inputmode="numeric" value="${state.clock.cadenceDays}"></label>
-      <label>Calendar label <input id="date-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if the date is unknown"></label>
+      <label for="date-label">Date <input id="date-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if the date is unknown"></label>
       <label>Day number <input id="ordinal" name="ordinal" inputmode="numeric" value="${state.clock.ordinal ?? ""}" placeholder="Unknown"></label>
       <fieldset><legend>Prerequisites this owner meets</legend>
         ${Object.entries(PREREQ_LABELS).map(([id, label]) => `<label><input type="checkbox" name="cap" value="${id}" ${unit.capabilities.includes(id) ? "checked" : ""}> ${esc(label)}</label>`).join("")}
@@ -353,22 +387,26 @@ function renderRecord(model) {
     <form id="record-order" class="panel stack" style="margin-top:14px">
       <h3>Order already underway</h3>
       ${specials.length ? `<label>Facility and order <select id="record-order-key" name="orderKey">${orderOptions}</select></label>
-        <label>Turn it started <input id="order-started" name="startedTurn" inputmode="numeric" placeholder="Leave blank if you do not know"></label>
+        <label for="order-started">In-game day it started <input id="order-started" name="startedDay" inputmode="numeric" value="${state.clock.ordinal ?? ""}" placeholder="Leave blank if you do not know"></label>
         <label>Note <input id="order-note" name="note" maxlength="240"></label>
         <button class="primary" type="submit">Mark order in progress</button>
-        <p class="muted">This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
-      ${orders.length ? `<ul>${orders.map((order) => `<li>${esc(order.label || order.suborder)} · turn ${order.startedTurn ?? "unknown"}${order.note ? ` · ${esc(order.note)}` : ""}</li>`).join("")}</ul>` : ""}
+        <p class="muted">Use the same day number as Settings. Leave it blank if you do not know it. This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
+      ${orders.length ? `<ul>${orders.map((order) => {
+        const day = orderStartedDay(order);
+        const today = day != null && state.clock.ordinal === day && state.clock.label ? ` · ${esc(state.clock.label)}` : "";
+        return `<li>${esc(order.label || order.suborder)} · started day ${day ?? "unknown"}${today}${order.note ? ` · ${esc(order.note)}` : ""}</li>`;
+      }).join("")}</ul>` : ""}
     </form>`;
 }
 
-function renderImport() {
+function renderImport(model) {
   return `<h2 class="with-mark">${mark("card")} Review a private file</h2>
-    <p class="muted">Paste a review file on this device. Turns, dates, loans, and goods are refused. Facilities and named people can be accepted one at a time, and only into the record you have open. Nothing in the file is bundled with the site.</p>
+    <p class="muted">Paste a review file on this device. Turns, dates, loans, and goods are refused. Facilities and named people can be accepted into the record you have open. The pasted text stays on this device. It is not saved to the shared record and it is not bundled with the site.</p>
     <form id="review" class="stack">
-      <label>Review JSON <textarea id="review-text" name="review"></textarea></label>
+      <label for="review-text">Review JSON <textarea id="review-text" name="review">${esc(model.reviewText || "")}</textarea></label>
       <button type="submit">Read the file locally</button>
     </form>
-    <div id="review-list"></div>`;
+    <div id="review-list">${renderReview(model.review || [])}</div>`;
 }
 
 function renderHelp() {
@@ -406,5 +444,22 @@ function renderMore() {
 
 export function renderReview(items) {
   if (!items.length) return `<p class="muted">Nothing to review.</p>`;
-  return `<div class="list">${items.map((item, index) => `<article class="card"><h3>${esc(item.title)}</h3><p class="muted">${esc(item.section)} · ${esc(item.status || "no status")}</p><p>${item.blocked ? "Not applied. Enter this yourself if you still want it." : "You can add this as an inherited, uncharged record."}</p>${item.blocked ? "" : `<button type="button" data-action="accept-review" data-index="${index}">Accept this item</button>`}</article>`).join("")}</div>`;
+  const remaining = items.some((item) => item.command && !item.blocked && !item.accepted && !item.present);
+  const cards = items.map((item, index) => {
+    let note = "You can add this as an inherited, uncharged record.";
+    let button = `<button type="button" data-action="accept-review" data-index="${index}">Accept this item</button>`;
+    if (item.blocked) {
+      note = "Not applied. Enter this yourself if you still want it.";
+      button = "";
+    } else if (item.accepted) {
+      note = "Added to the open record.";
+      button = `<button type="button" disabled>Added</button>`;
+    } else if (item.present) {
+      note = "Already in the record.";
+      button = `<button type="button" disabled>Already in the record</button>`;
+    }
+    return `<article class="card"><h3>${esc(item.title)}</h3><p class="muted">${esc(item.section)} · ${esc(item.status || "no status")}</p><p>${note}</p>${button}</article>`;
+  }).join("");
+  const all = remaining ? `<button type="button" data-action="accept-remaining">Accept all remaining</button>` : "";
+  return `<div class="list">${cards}</div>${all}`;
 }

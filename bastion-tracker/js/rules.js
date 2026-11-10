@@ -40,6 +40,7 @@ const DM_ONLY = new Set([
   "reserve_goods",
   "record_order",
   "remove_goods",
+  "remove_person",
 ]);
 
 export function emptyEstate(options = {}) {
@@ -310,6 +311,10 @@ export function apply(input, command) {
       return recordOrder(state, command);
     case "remove_goods":
       return removeGoods(state, command);
+    case "remove_person":
+      return removePerson(state, command);
+    case "edit_person":
+      return editPerson(state, command);
     default:
       throw new RuleError("unsupported", "That action is not available.");
   }
@@ -723,12 +728,23 @@ function settlePurchase(state, task, command) {
   return { taskId: task.id, standardGp: task.standardGp };
 }
 
+const PERSON_CATEGORIES = new Set(["household", "hireling", "defender", "guest", "lieutenant", "creature"]);
+
+function cleanPersonName(name) {
+  return String(name || "").trim().slice(0, 80);
+}
+
+function categoryLocked(state, person) {
+  const active = !person.status || person.status === "active";
+  if (!active) return false;
+  if (person.category === "defender" || person.protectsOnce) return true;
+  return Boolean(person.facilityId && state.facilities.some((item) => item.id === person.facilityId && item.status !== "archived"));
+}
+
 function rosterSave(state, command) {
   const person = command.person || {};
-  const name = String(person.name || "").trim();
-  if (!name) throw new RuleError("name_required", "A person needs a name.");
-  const categories = new Set(["household", "hireling", "defender", "guest", "lieutenant", "creature"]);
-  if (!categories.has(person.category)) throw new RuleError("bad_category", "Choose a roster category.");
+  const name = cleanPersonName(person.name);
+  if (!PERSON_CATEGORIES.has(person.category)) throw new RuleError("bad_category", "Choose a roster category.");
   const record = {
     id: person.id || nid(state, "npc"),
     name: name.slice(0, 80),
@@ -746,7 +762,7 @@ function rosterSave(state, command) {
   const index = state.roster.findIndex((item) => item.id === record.id);
   if (index >= 0) state.roster[index] = record;
   else state.roster.push(record);
-  return finish(state, command, { personId: record.id }, `Saved ${record.name}.`);
+  return finish(state, command, { personId: record.id }, `Saved ${record.name || "an unnamed person"}.`);
 }
 
 function rosterRemove(state, command) {
@@ -754,6 +770,71 @@ function rosterRemove(state, command) {
   if (!person) throw new RuleError("missing_person", "That person is not on the roster.");
   person.status = "gone";
   return finish(state, command, { personId: person.id }, `Marked ${person.name} as gone. The name stays in the log.`);
+}
+
+function mentionsId(value, id) {
+  if (value === id) return true;
+  if (Array.isArray(value)) return value.some((item) => mentionsId(item, id));
+  if (value && typeof value === "object") return Object.values(value).some((item) => mentionsId(item, id));
+  return false;
+}
+
+function personHoldReason(state, person) {
+  const active = !person.status || person.status === "active";
+  if (active && person.category === "defender") {
+    return "That defender is still active and counted. Change the defender count instead of deleting the name. Cash was not changed.";
+  }
+  if (active && person.facilityId) {
+    const facility = state.facilities.find((item) => item.id === person.facilityId && item.status !== "archived");
+    if (facility) return "That person is still assigned to a facility. Clear that assignment before removing them. Cash was not changed.";
+  }
+  if (active && person.protectsOnce) {
+    return "That person is still set to protect the bastion once. Cash was not changed.";
+  }
+  const openOrder = (state.orders || []).some((order) => !["resolved", "cancelled"].includes(order.status) && mentionsId(order, person.id));
+  const openTask = (state.tasks || []).some((task) => task.status === "open" && mentionsId(task, person.id));
+  const pendingEvent = (state.events || []).some((event) => event.status === "pending" && mentionsId(event, person.id));
+  if (openOrder || openTask || pendingEvent) {
+    return "That person is tied to an order that has not finished. Release that link before removing them. Cash was not changed.";
+  }
+  return "";
+}
+
+function removePerson(state, command) {
+  const person = state.roster.find((item) => item.id === command.personId);
+  if (!person) throw new RuleError("missing_person", "That person is not on the roster.");
+  const reason = personHoldReason(state, person);
+  if (reason) throw new RuleError("person_held", reason);
+  const cashGp = state.finance.cashGp;
+  const cashKnown = state.finance.cashKnown;
+  state.roster = state.roster.filter((item) => item.id !== person.id);
+  state.finance.cashGp = cashGp;
+  state.finance.cashKnown = cashKnown;
+  return finish(state, command, { personId: person.id, removed: true }, `Removed ${person.name || "unnamed person"}. Cash was not changed.`);
+}
+
+function editPerson(state, command) {
+  const person = state.roster.find((item) => item.id === command.personId);
+  if (!person) throw new RuleError("missing_person", "That person is not on the roster.");
+  const name = cleanPersonName(command.name);
+  const role = String(command.role || "").slice(0, 80);
+  const summary = String(command.summary || "").slice(0, 160);
+  const link = String(command.link || "").slice(0, 300);
+  if (link && !/^https?:\/\//.test(link)) throw new RuleError("bad_link", "A link should start with http:// or https://, or be left blank.");
+  const category = command.category || person.category;
+  if (!PERSON_CATEGORIES.has(category)) throw new RuleError("bad_category", "Choose a roster category.");
+  if (category !== person.category && categoryLocked(state, person)) {
+    throw new RuleError("category_locked", "That person's category stays put while they are a defender, assigned to a facility, or set to protect the bastion.");
+  }
+  const oldValues = { name: person.name, role: person.role, summary: person.summary, link: person.link, category: person.category };
+  const newValues = { name, role, summary, link, category };
+  person.name = name;
+  person.role = role;
+  person.summary = summary;
+  person.link = link;
+  person.category = category;
+  const summaryText = `Edited roster ${person.id}. Name: "${oldValues.name}" → "${newValues.name}". Role: "${oldValues.role}" → "${newValues.role}". Category: "${oldValues.category}" → "${newValues.category}". Summary: "${oldValues.summary}" → "${newValues.summary}". Link: "${oldValues.link}" → "${newValues.link}".`;
+  return finish(state, command, { personId: person.id, old: oldValues, new: newValues }, summaryText);
 }
 
 function recordDefenders(state, command) {
@@ -884,16 +965,32 @@ function removeGoods(state, command) {
   return finish(state, command, { lotId: lot.id, removed: true }, `Removed ${lot.name || "unnamed goods"}. Cash was not changed.`);
 }
 
+function readStartedDay(command) {
+  const raw = Object.prototype.hasOwnProperty.call(command, "startedDay") ? command.startedDay : command.startedTurn;
+  if (raw == null || raw === "") return null;
+  const started = Number(raw);
+  if (!Number.isInteger(started) || started < 0) {
+    throw new RuleError("bad_day", "The in-game day it started has to be a whole number, or left blank.");
+  }
+  return started;
+}
+
+export function orderStartedDay(order) {
+  if (!order) return null;
+  if (order.startedDay != null && order.startedDay !== "") return Number(order.startedDay);
+  if (order.startedTurn != null && order.startedTurn !== "") return Number(order.startedTurn);
+  return null;
+}
+
 function recordOrder(state, command) {
   const facility = facilityById(state, command.facilityId);
   if (facility.kind !== "special") throw new RuleError("not_special", "Basic rooms do not take orders.");
   const spec = specialById(facility.catalogId);
   const sub = spec?.subs.find((item) => item.id === command.suborder);
   if (!sub) throw new RuleError("bad_order", `${facility.name} cannot take that order.`);
-  let started = null;
-  if (command.startedTurn != null && command.startedTurn !== "") {
-    started = Number(command.startedTurn);
-    if (!Number.isInteger(started) || started < 0) throw new RuleError("bad_day", "The turn it started has to be a whole number, or left blank.");
+  const started = readStartedDay(command);
+  if (started != null && state.clock.ordinal != null && started > state.clock.ordinal) {
+    throw new RuleError("bad_day", "That in-game day is later than the current day.");
   }
   const note = String(command.note || "").slice(0, 240);
   if (!state.orders) state.orders = [];
@@ -905,12 +1002,15 @@ function recordOrder(state, command) {
   order.suborder = sub.id;
   order.label = sub.label;
   order.status = "in_progress";
-  order.startedTurn = started;
+  order.startedDay = started;
+  delete order.startedTurn;
   order.note = note;
   order.auto = null;
   order.recorded = true;
   facility.currentOrderId = order.id;
-  return finish(state, command, { orderId: order.id }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
+  // The stored day is only a label. It does not finish the order. Real task
+  // timers still use their own day counts, not the turn length.
+  return finish(state, command, { orderId: order.id, startedDay: started }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
 }
 
 function recordGoods(state, command) {
