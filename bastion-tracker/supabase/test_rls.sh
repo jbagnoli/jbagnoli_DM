@@ -30,8 +30,10 @@ psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migration
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/003_command_parity.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/004_remove_blank_goods.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/005_remove_person.sql
+psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/006_manage_rooms_people.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f rls_test.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f command_test.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f goods_test.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f person_test.sql
+psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f manage_test.sql
 echo "database isolation tests passed"

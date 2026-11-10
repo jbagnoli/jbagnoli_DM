@@ -69,6 +69,7 @@ button.primary, a.primary {
   text-decoration: none;
 }
 button.quiet { background: transparent; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 3px solid var(--ink);
   outline-offset: 3px;
@@ -202,8 +203,9 @@ h3 { font-size: 22px; margin: 0 0 8px; }
 .mark path, .mark circle, .mark rect { fill: none; stroke: currentColor; stroke-width: 1.15; stroke-linejoin: round; stroke-linecap: round; }
 .muted { color: var(--muted); }
 .stack { display: grid; gap: 10px; }
-.goods-row, .confirm-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.goods-row > button, .confirm-row > button { min-width: 44px; }
+.goods-row, .confirm-row, .room-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.room-actions > button, .goods-row > button, .confirm-row > button { min-width: 44px; }
+h4 { font-size: 18px; margin: 8px 0 0; font-family: Cinzel, Georgia, "Times New Roman", serif; }
 label { display: grid; gap: 6px; font-size: 15px; }
 input, select, textarea {
   width: 100%;
@@ -262,6 +264,7 @@ textarea { min-height: 120px; }
 }
 @media (max-width: 899px) {
   .side { display: none; }
+  .wrap { padding-bottom: 96px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

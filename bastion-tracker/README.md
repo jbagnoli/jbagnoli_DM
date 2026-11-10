@@ -19,7 +19,7 @@ The publishable key is not a JWT. The tracker sends it as the `apikey` header. B
 
 ## What you still do
 
-1. After this change is merged, run `supabase/migrations/005_remove_person.sql` in the Supabase SQL editor. Run `004_remove_blank_goods.sql` first if you have not already. Do not run `001`, `002`, or `003` again. `005` lets the DM remove a roster name entered by mistake when that person is not still assigned, protecting the bastion, housed as a defender, or tied to an unfinished order. It does not delete anyone by itself, and it does not change cash.
+1. After this change is merged, run `supabase/migrations/006_manage_rooms_people.sql` in the Supabase SQL editor. If `005_remove_person.sql` has not been run yet, run that first. Do not run `001`, `002`, `003`, or `004` again. `006` does not rewrite the estate and does not change cash. It lets the DM edit, remove, or replace a room, swap a special facility without spending a level-up replacement, and replace or move a person. An editor can still add someone with no name and fill the name in later.
 2. Open the tracker and sign in with the DM account. The first sign-in creates your estate and makes you its DM. Until you sign in, the page stays **Not connected**.
 3. Add other people in the Supabase dashboard (Authentication → Users). Use the same email they will type here. Public signup will not create accounts.
 4. Sign in as the DM and create an invite code for that email and role. Give them the code yourself. They sign in, then accept the code.
@@ -32,8 +32,10 @@ Publishing the site is the existing Pages workflow. A deploy log shows the files
 Roles:
 
 - **DM** changes level, money, replacements, invites, and overrides.
-- **Editor** can run turns, rooms, and the roster. That includes adding someone with no name yet and filling the name in later. An editor cannot remove a person.
-- **DM** can also remove a roster name entered by mistake, when that person is not a defender, not assigned to a facility, not set to protect the bastion, and not tied to an unfinished order.
+- **Editor** can run turns, add rooms, and keep the roster. That includes adding someone with no name yet and filling the name in later. An editor cannot remove or replace a person, move someone to another room, or edit, remove, or replace a room.
+- **DM** can also remove a roster name entered by mistake, when that person is not a defender, not assigned to a facility, not set to protect the bastion, and not tied to an unfinished order. The DM can replace that person instead, which keeps the post and leaves the old name marked replaced.
+- **DM** can edit a room's recorded type, size, or note, remove a room, or replace a basic room. Those are corrections. Removing a room archives it and does not move cash. The chapter does not describe selling a room.
+- **DM** can swap a special facility in two different ways. A level-up replacement spends one replacement granted when the level goes up. A DM correction swap can fix a wrong choice or change the facility before the next level, and it does not spend that replacement. Hirelings must be kept on the roster or marked released. Defenders have to be counted down first. Unfinished work is cancelled only when the DM confirms it, and that does not pay a sale or refund a purchase.
 - **Reader** can look and cannot change anything.
 - Someone who is signed in but not invited cannot see the estate. Anonymous visitors cannot read it.
 
@@ -48,7 +50,7 @@ Use **Open practice sandbox** to learn the screens. The sample hall is called He
 Worked out from the bastions chapter, without reprinting it:
 
 - How many special facilities a level allows, which ones can repeat, and prerequisites.
-- One replacement each time the level goes up after you start tracking. The current level alone does not grant a pile of swaps.
+- One published replacement each time the level goes up after you start tracking. The current level alone does not grant a pile of swaps. A mid-level swap is a separate DM correction.
 - Basic room price and days. Rooms you mark as already owned are free.
 - Barrack recruiting, Storehouse buy and sell (7 days even on a longer turn), Armory stock, and wall squares.
 - Maintain for the whole owner, one event, and a shutdown that lasts the next turn rather than a number of days.

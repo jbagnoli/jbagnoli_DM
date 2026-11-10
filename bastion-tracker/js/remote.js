@@ -71,6 +71,28 @@ export async function listEstates(config, token) {
   return request(config, "/rest/v1/estates?select=id,document,revision", { token });
 }
 
+export function accessUserId(token) {
+  try {
+    const part = String(token || "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = JSON.parse(atob(part));
+    return json.sub || "";
+  } catch {
+    return "";
+  }
+}
+
+export async function memberRole(config, token, estateId) {
+  const userId = accessUserId(token);
+  if (!userId || !estateId) return "";
+  const rows = await request(
+    config,
+    `/rest/v1/estate_members?select=role&estate_id=eq.${encodeURIComponent(estateId)}&user_id=eq.${encodeURIComponent(userId)}`,
+    { token },
+  );
+  const role = rows?.[0]?.role || "";
+  return role === "dm" || role === "editor" || role === "reader" ? role : "";
+}
+
 export async function applyCommand(config, token, estateId, expectedRevision, idempotencyKey, command) {
   return request(config, "/rest/v1/rpc/apply_command", {
     method: "POST",
