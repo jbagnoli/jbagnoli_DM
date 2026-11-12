@@ -65,7 +65,7 @@ select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222
 select public.accept_invite(:'reader_token') as accepted \gset
 select count(*) as reader_rows from public.estates;
 select public._assert((select count(*) from public.estates) = 1, 'reader_missing_estate');
-select public._expect_forbidden(:'estate_id'::uuid, '{"type":"set_clock","ordinal":3}'::jsonb, 'reader-try');
+select public._expect_forbidden(:'estate_id'::uuid, '{"type":"set_clock","turn":3}'::jsonb, 'reader-try');
 
 -- Editor cannot raise the level.
 select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
@@ -74,11 +74,10 @@ select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333
 select public.accept_invite(:'editor_token');
 select public._expect_forbidden(:'estate_id'::uuid, '{"type":"raise_level","unitId":"unit-party","level":6}'::jsonb, 'editor-level');
 
--- DM sells 500 GP of goods for 550 once, even when the cadence is 10.
+-- DM sells 500 GP of goods for 550 on the next Bastion turn.
 select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
-select public.apply_command(:'estate_id'::uuid, 1, 'clock', '{"type":"set_clock","ordinal":1}'::jsonb)->>'revision' as rev_clock \gset
-select public.apply_command(:'estate_id'::uuid, :rev_clock, 'cadence', '{"type":"set_settings","cadenceDays":10}'::jsonb)->>'revision' as rev_cadence \gset
-select public.apply_command(:'estate_id'::uuid, :rev_cadence, 'cash', '{"type":"set_finance","cashGp":0}'::jsonb)->>'revision' as rev_cash \gset
+select public.apply_command(:'estate_id'::uuid, 1, 'clock', '{"type":"set_clock","turn":1}'::jsonb)->>'revision' as rev_clock \gset
+select public.apply_command(:'estate_id'::uuid, :rev_clock, 'cash', '{"type":"set_finance","cashGp":0}'::jsonb)->>'revision' as rev_cash \gset
 select public.apply_command(:'estate_id'::uuid, :rev_cash, 'store', '{"type":"add_special","unitId":"unit-party","catalogId":"storehouse"}'::jsonb)->>'revision' as rev_store \gset
 select public.apply_command(:'estate_id'::uuid, :rev_store, 'goods', '{"type":"record_goods","name":"Wool","standardGp":500}'::jsonb)->>'revision' as rev_goods \gset
 select (document->'goods'->0->>'id') as lot_id from public.estates where id = :'estate_id'::uuid \gset
@@ -96,12 +95,12 @@ select public.apply_command(
   )
 )->>'revision' as rev_sell \gset
 select (document#>>'{finance,cashGp}')::int as cash_before from public.estates where id = :'estate_id'::uuid \gset
-select public.apply_command(:'estate_id'::uuid, :rev_sell, 'week', '{"type":"advance_days","days":7}'::jsonb)->>'revision' as rev_week \gset
-select public.apply_command(:'estate_id'::uuid, 1, 'week', '{"type":"advance_days","days":7}'::jsonb)->>'replay' as replayed \gset
-select (document#>>'{finance,cashGp}')::int as cash_after, (document#>>'{clock,ordinal}')::int as day_after, (document#>>'{clock,cadenceDays}')::int as cadence
+select public.apply_command(:'estate_id'::uuid, :rev_sell, 'week', '{"type":"take_turn"}'::jsonb)->>'revision' as rev_week \gset
+select public.apply_command(:'estate_id'::uuid, 1, 'week', '{"type":"take_turn"}'::jsonb)->>'replay' as replayed \gset
+select (document#>>'{finance,cashGp}')::int as cash_after, (document#>>'{clock,turn}')::int as turn_after
 from public.estates where id = :'estate_id'::uuid \gset
 
-select public._assert(:cash_before = 0 and :cash_after = 550 and :day_after = 8 and :cadence = 10 and :'replayed' = 'true', 'sale_settlement');
+select public._assert(:cash_before = 0 and :cash_after = 550 and :turn_after = 2 and :'replayed' = 'true', 'sale_settlement');
 
 -- A second member still cannot see a different estate.
 select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', false);

@@ -33,6 +33,7 @@ declare
   garden_id text;
   storage_id text;
   lot_id text;
+  project_id text;
   loan_id text;
   basic_id text;
   wing_id text;
@@ -48,8 +49,8 @@ begin
   perform set_config('request.jwt.claim.role', 'authenticated', false);
   eid := public.create_estate('Hearthwatch Hold');
   select document, revision into doc, rev from public.estates where id = eid;
-  if (doc#>>'{clock,cadenceDays}')::int <> 10 or doc#>>'{clock,ordinal}' is not null then
-    perform public._cmd_fail('new estate is not a 10-day turn with an unknown day');
+  if doc#>>'{clock,turn}' is not null or coalesce((doc#>>'{clock,turnNeedsCheck}')::boolean, false) then
+    perform public._cmd_fail('new estate invented a Bastion turn');
   end if;
   if rev <> 1 or (doc->>'revision')::int <> 1 then
     perform public._cmd_fail('new estate revision');
@@ -110,17 +111,17 @@ begin
     perform public._cmd_fail('refused import changed the revision');
   end if;
   begin
-    perform public.apply_command(eid, 1, 'stale', '{"type":"set_clock","ordinal":3}'::jsonb);
+    perform public.apply_command(eid, 1, 'stale', '{"type":"set_clock","turn":3}'::jsonb);
     perform public._cmd_fail('stale revision was accepted');
   exception when serialization_failure then
     if SQLERRM not like '%revision_conflict%' then raise; end if;
   end;
 
-  out := public.apply_command(eid, rev, 'clock', '{"type":"set_clock","ordinal":1,"label":"Practice day"}'::jsonb);
+  out := public.apply_command(eid, rev, 'clock', '{"type":"set_clock","turn":1,"label":"Practice session"}'::jsonb);
   rev := (out->>'revision')::bigint;
   out := public.apply_command(eid, rev, 'cash', '{"type":"set_finance","cashGp":8000}'::jsonb);
   rev := (out->>'revision')::bigint;
-  out := public.apply_command(eid, rev, 'settings', '{"type":"set_settings","name":"Hearthwatch Hold","owner":"The company","unitId":"unit-party","cadenceDays":10}'::jsonb);
+  out := public.apply_command(eid, rev, 'settings', '{"type":"set_settings","name":"Hearthwatch Hold","owner":"The company","unitId":"unit-party"}'::jsonb);
   rev := (out->>'revision')::bigint;
   doc := out->'document';
   if doc#>>'{units,0,owner}' <> 'The company' then
@@ -135,7 +136,7 @@ begin
   out := public.apply_command(eid, rev, 'parlor', '{"type":"add_basic","unitId":"unit-party","roomId":"parlor","space":"cramped"}'::jsonb);
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if (doc#>>'{finance,cashGp}')::int <> 7500 or (doc#>>'{projects,0,days}')::int <> 20 then
+  if (doc#>>'{finance,cashGp}')::int <> 7500 or doc#>>'{projects,0,dueTurn}' is not null or coalesce((doc#>>'{projects,0,unscheduled}')::boolean, false) is not true then
     perform public._cmd_fail('paid basic room');
   end if;
   out := public.apply_command(eid, rev, 'store', '{"type":"add_special","unitId":"unit-party","catalogId":"storehouse"}'::jsonb);
@@ -152,16 +153,17 @@ begin
   ));
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if (doc#>>'{finance,cashGp}')::int <> 7500 or (doc#>>'{tasks,0,proceeds}')::int <> 550 or (doc#>>'{tasks,0,dueOrdinal}')::int <> 8 then
+  if (doc#>>'{finance,cashGp}')::int <> 7500 or (doc#>>'{tasks,0,proceeds}')::int <> 550 or (doc#>>'{tasks,0,dueTurn}')::int <> 2 then
     perform public._cmd_fail('sell preview');
   end if;
-  out := public.apply_command(eid, rev, 'week', '{"type":"advance_days","days":7}'::jsonb);
+  out := public.apply_command(eid, rev, 'week', '{"type":"take_turn"}'::jsonb);
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if (doc#>>'{finance,cashGp}')::int <> 8050 or (doc#>>'{clock,ordinal}')::int <> 8 then
+  if (doc#>>'{finance,cashGp}')::int <> 8050 or (doc#>>'{clock,turn}')::int <> 2 then
     perform public._cmd_fail('sale settlement');
   end if;
-  out := public.apply_command(eid, rev, 'build-days', '{"type":"advance_days","days":13}'::jsonb);
+  select elem->>'id' into project_id from jsonb_array_elements(doc->'projects') elem where elem->>'name' = 'Parlor' limit 1;
+  out := public.apply_command(eid, rev, 'finish-parlor', jsonb_build_object('type', 'finish_project', 'projectId', project_id));
   rev := (out->>'revision')::bigint;
   doc := out->'document';
   if not exists (select 1 from jsonb_array_elements(doc->'facilities') elem where elem->>'name' = 'Parlor' and elem->>'acquired' = 'built') then
@@ -267,7 +269,7 @@ begin
   doc := out->'document';
   if not exists (
     select 1 from jsonb_array_elements(doc->'orders') elem
-    where elem->>'facilityId' = store_id and elem->>'status' = 'in_progress' and coalesce((elem->>'recorded')::boolean, false) and (elem->>'startedDay')::int = 2 and elem->>'startedTurn' is null
+    where elem->>'facilityId' = store_id and elem->>'status' = 'in_progress' and coalesce((elem->>'recorded')::boolean, false) and (elem->>'startedTurn')::int = 2 and not (elem ? 'startedDay')
   ) then
     perform public._cmd_fail('in-progress order');
   end if;
@@ -322,25 +324,25 @@ begin
   before_rev := rev;
   out := public.apply_command(eid, rev, 'save', jsonb_build_object(
     'type', 'save_settings', 'name', 'Hearthwatch Hold', 'owner', 'The company', 'unitId', 'unit-party',
-    'cadenceDays', 12, 'label', 'A spring day', 'ordinal', 30, 'level', 13, 'grantReplacements', false,
+    'label', 'A practice session', 'turn', 3, 'level', 13, 'grantReplacements', false,
     'capabilities', jsonb_build_array('arcane_or_tool', 'holy_or_druid')
   ));
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if rev <> before_rev + 1 or (doc#>>'{clock,cadenceDays}')::int <> 12 or (doc#>>'{clock,ordinal}')::int <> 30
+  if rev <> before_rev + 1 or (doc#>>'{clock,turn}')::int <> 3 or coalesce((doc#>>'{clock,turnNeedsCheck}')::boolean, true)
      or (doc#>>'{units,0,level}')::int <> 13 or (doc#>>'{units,0,replacementBank}')::int <> 0
      or jsonb_array_length(doc#>'{units,0,capabilities}') <> 2 then
     perform public._cmd_fail('atomic settings');
   end if;
   before_rev := rev;
   begin
-    perform public.apply_command(eid, rev, 'save-bad', '{"type":"save_settings","name":"Renamed","unitId":"unit-party","level":1,"cadenceDays":3}'::jsonb);
+    perform public.apply_command(eid, rev, 'save-bad', '{"type":"save_settings","name":"Renamed","unitId":"unit-party","level":1}'::jsonb);
     perform public._cmd_fail('illegal level was saved');
   exception when invalid_parameter_value then
     if SQLERRM not like 'Level 1 allows%' then raise; end if;
   end;
   select document, revision into doc, column_rev from public.estates where id = eid;
-  if column_rev <> before_rev or doc->>'name' <> 'Hearthwatch Hold' or (doc#>>'{clock,cadenceDays}')::int <> 12 then
+  if column_rev <> before_rev or doc->>'name' <> 'Hearthwatch Hold' or (doc#>>'{clock,turn}')::int <> 3 then
     perform public._cmd_fail('failed settings save changed the record');
   end if;
   out := public.apply_command(eid, rev, 'grant', '{"type":"set_level","unitId":"unit-party","level":14,"grantReplacements":true}'::jsonb);
@@ -406,7 +408,7 @@ begin
 
   perform set_config('request.jwt.claim.sub', 'dddddddd-dddd-dddd-dddd-dddddddddddd', false);
   begin
-    perform public.apply_command(eid, null, 'stranger', '{"type":"set_clock","ordinal":1}'::jsonb);
+    perform public.apply_command(eid, null, 'stranger', '{"type":"set_clock","turn":1}'::jsonb);
     perform public._cmd_fail('stranger wrote');
   exception when insufficient_privilege then null;
   end;
@@ -414,7 +416,7 @@ begin
   perform set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', false);
   drill := public.create_estate('Drill Yard');
   select revision into drill_rev from public.estates where id = drill;
-  out := public.apply_command(drill, drill_rev, 'd-clock', '{"type":"set_clock","ordinal":1}'::jsonb);
+  out := public.apply_command(drill, drill_rev, 'd-clock', '{"type":"set_clock","turn":1}'::jsonb);
   drill_rev := (out->>'revision')::bigint;
   out := public.apply_command(drill, drill_rev, 'd-cash', '{"type":"set_finance","cashGp":500}'::jsonb);
   drill_rev := (out->>'revision')::bigint;
@@ -478,7 +480,7 @@ declare
 begin
   select id into eid from public.estates where document->>'name' = 'Hearthwatch Hold' limit 1;
   update public.estates
-  set document = jsonb_set(document, '{clock,cadenceDays}', '7'::jsonb)
+  set document = jsonb_set(document, '{clock,turn}', '4'::jsonb)
   where id = eid;
 end $$;
 
@@ -488,18 +490,18 @@ select public.apply_command(
   (select id from public.estates where document->>'name' = 'Hearthwatch Hold' limit 1),
   null,
   'keep-cadence',
-  '{"type":"set_clock","label":"Still the old turn length"}'::jsonb
+  '{"type":"set_clock","label":"Still the same turn"}'::jsonb
 )->>'revision' as kept_rev \gset
 
 reset role;
 do $$
 declare
-  cadence int;
+  kept int;
 begin
-  select (document#>>'{clock,cadenceDays}')::int into cadence
+  select (document#>>'{clock,turn}')::int into kept
   from public.estates where document->>'name' = 'Hearthwatch Hold';
-  if cadence <> 7 then
-    raise exception 'a later command rewrote an existing turn length';
+  if kept <> 4 then
+    raise exception 'a later command rewrote the Bastion turn';
   end if;
 end $$;
 
@@ -508,7 +510,7 @@ do $$
 begin
   execute 'set local role anon';
   begin
-    perform public.apply_command('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, null, 'anon', '{"type":"set_clock","ordinal":1}'::jsonb);
+    perform public.apply_command('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, null, 'anon', '{"type":"set_clock","turn":1}'::jsonb);
     raise exception 'anon_could_write';
   exception
     when insufficient_privilege then
