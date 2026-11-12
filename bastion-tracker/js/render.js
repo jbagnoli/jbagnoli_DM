@@ -1,5 +1,6 @@
+import { FESTIVALS, MONTHS, dateForTurn } from "./calendar.js";
 import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, specialById, specialCap } from "./catalog.js";
-import { facilityClosureFacts, orderStartedDay } from "./rules.js";
+import { facilityClosureFacts, orderStartedTurn } from "./rules.js";
 import { markSavingButtons } from "./save-feedback.js";
 import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
@@ -18,9 +19,14 @@ function money(state) {
   return `${state.finance.cashGp} GP`;
 }
 
-function dayLine(state) {
-  if (state.clock.ordinal == null) return "In-game day unknown";
-  return state.clock.label ? `${state.clock.label} · day ${state.clock.ordinal}` : `Day ${state.clock.ordinal}`;
+function canSetDate(model) {
+  return model.mode !== "remote" || ["dm", "editor", "reader"].includes(model.role);
+}
+
+function turnLine(state) {
+  if (state.clock.turn == null) return "Bastion turn unknown";
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn);
+  return shown?.text ? `Turn ${state.clock.turn} · ${shown.text}` : `Turn ${state.clock.turn}`;
 }
 
 function saveFeedback(model) {
@@ -141,7 +147,10 @@ function renderDashboard(model) {
   const defenders = state.roster.filter((item) => item.category === "defender" && item.status === "active");
   const projects = [...state.projects.filter((item) => item.status === "building"), ...state.walls.squares.filter((item) => item.status === "building")];
   const pending = state.events.filter((item) => item.status === "pending");
-  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="muted">${esc(dayLine(state))} · turn every ${state.clock.cadenceDays} in-game days</p></header>
+  const session = state.clock.label ? `<p class="muted">Session date: ${esc(state.clock.label)}</p>` : "";
+  const check = state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Confirm the Bastion turn in Settings. It was not changed to 3 automatically.</p>` : "";
+  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="muted">${esc(turnLine(state))}</p>${session}</header>
+    ${check}
     <div class="stats">
       <div class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></div>
       <div class="stat"><span>Specials</span><strong>${specials.length}/${specialCap(unit.level)}</strong></div>
@@ -149,7 +158,7 @@ function renderDashboard(model) {
       <div class="stat"><span>Open timers</span><strong>${projects.length + state.tasks.filter((item) => item.status === "open").length}</strong></div>
     </div>
     ${state.finance.cashKnown ? "" : `<p class="banner warn">Cash, loans, and goods on hand are unknown until you enter them. Spending and payouts stay blocked.</p>`}
-    ${state.clock.ordinal == null ? `<p class="banner warn">The in-game day is unknown, so timers cannot finish.</p>` : ""}
+    ${state.clock.turn == null ? `<p class="banner warn">The Bastion turn is unknown, so timers cannot finish.</p>` : ""}
     ${pending.length ? `<p class="banner warn">A Maintain event is waiting. Resolve it before the next turn.</p>` : ""}
     <div class="actions" style="margin-top:14px">
       <button class="primary" type="button" data-action="nav" data-view="turn">Record a turn</button>
@@ -157,7 +166,7 @@ function renderDashboard(model) {
       <button type="button" data-action="nav" data-view="people">People</button>
     </div>
     <section class="panel" style="margin-top:14px"><h2>What is due</h2>
-      ${projects.length || state.tasks.some((item) => item.status === "open") ? `<ul>${projects.map((item) => `<li>${esc(item.name || "Wall square")} ready on day ${item.dueOrdinal}</li>`).join("")}${state.tasks.filter((item) => item.status === "open").map((item) => `<li>${esc(item.auto)} ready on day ${item.dueOrdinal}</li>`).join("")}</ul>` : `<p class="muted">No open timers.</p>`}
+      ${projects.length || state.tasks.some((item) => item.status === "open") ? `<ul>${projects.map((item) => `<li>${esc(item.name || "Wall square")} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}</li>`).join("")}${state.tasks.filter((item) => item.status === "open").map((item) => `<li>${esc(item.auto)} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}${item.timerNeedsCheck ? " · needs a finish turn" : ""}</li>`).join("")}</ul>` : `<p class="muted">No open timers.</p>`}
     </section>`;
 }
 
@@ -258,10 +267,10 @@ function renderRooms(model) {
     <section class="panel stack" style="margin-top:14px"><h3>Basic room</h3>
       <form id="add-basic" class="stack">
         <label>Room <select id="roomId" name="roomId">${BASIC_ROOMS.map((room) => `<option value="${room.id}">${esc(room.name)}</option>`).join("")}</select></label>
-        <label>Size <select id="space" name="space"><option value="cramped">Cramped · 500 GP · 20 days</option><option value="roomy">Roomy · 1,000 GP · 45 days</option><option value="vast">Vast · 3,000 GP · 125 days</option></select></label>
+        <label>Size <select id="space" name="space"><option value="cramped">Cramped · 500 GP</option><option value="roomy">Roomy · 1,000 GP</option><option value="vast">Vast · 3,000 GP</option></select></label>
         <label><input id="inherited" name="inherited" type="checkbox"> Already part of the estate. Do not charge.</label>
         <button class="primary" type="submit">Add basic room</button>
-        <p class="muted">This is the published way to add a basic room. A DM correction that removes or replaces a room is on the room card, and it does not refund the cost.</p>
+        <p class="muted">This is the published price. The published build time is not a whole number of Bastion turns, so paying does not schedule a finish turn. Mark it already owned, or finish the project when the table says it is done.</p>
       </form>
     </section>
     <section class="panel"><h3>Projects</h3>${renderProjects(model, manage)}</section>`;
@@ -383,7 +392,8 @@ function renderProjects(model, manage) {
         ? `<form id="cancel-project" class="stack"><input type="hidden" name="projectId" value="${esc(item.id)}">${reasonField("project-reason")}<button class="primary" type="submit">Cancel this build</button><button type="button" data-action="cancel-project-close">Keep the build</button><p class="muted">The build will not finish. Money already spent is not refunded.</p></form>`
         : `<button type="button" data-action="cancel-project" data-id="${esc(item.id)}">Cancel this build</button>`)
       : "";
-    return `<li class="card"><span>${esc(item.name)} · ${esc(item.status)} · due day ${item.dueOrdinal ?? "unknown"} · ${item.gp || 0} GP</span>${action}</li>`;
+    const when = item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`;
+    return `<li class="card"><span>${esc(item.name)} · ${esc(item.status)} · ${when} · ${item.gp || 0} GP</span>${action}${item.status === "building" && manage ? `<button type="button" data-action="finish-project" data-id="${esc(item.id)}">Mark finished</button>` : ""}</li>`;
   }).join("")}</ul>`;
 }
 
@@ -459,26 +469,62 @@ function renderReplacePerson(person, locked, categories) {
   </form>`;
 }
 
+function calendarFields(prefix, anchor) {
+  const month = anchor?.month || "tarsakh";
+  const festival = anchor?.festival || "";
+  return `<label for="${prefix}-month">Month or festival <select id="${prefix}-month" name="month">${MONTHS.map(([id, name]) => `<option value="${id}" ${month === id && !festival ? "selected" : ""}>${esc(name)}</option>`).join("")}${FESTIVALS.map(([id, name]) => `<option value="festival:${id}" ${festival === id ? "selected" : ""}>${esc(name)}</option>`).join("")}</select></label>
+    <label for="${prefix}-day">Day of the month <input id="${prefix}-day" name="day" inputmode="numeric" value="${anchor?.day ?? ""}" placeholder="1 to 30. Leave blank for a festival."></label>
+    <label for="${prefix}-year">Year, if you know it <input id="${prefix}-year" name="year" inputmode="numeric" value="${anchor?.year ?? ""}" placeholder="Leave blank if the year is unknown"></label>`;
+}
+
+function orderChoices(facility) {
+  const spec = specialById(facility.catalogId);
+  return (spec?.subs || []).map((sub) => `<option value="${sub.id}">${esc(sub.label)}${sub.turns == null ? "" : ` · ${sub.turns} turn${sub.turns === 1 ? "" : "s"}`}</option>`).join("");
+}
+
 function renderTurn(model) {
   const state = model.state;
+  const manage = canManage(model);
   const specials = state.facilities.filter((item) => item.kind === "special" && item.status !== "archived");
   const pending = state.events.find((item) => item.status === "pending");
-  return `<h2 class="with-mark">${mark("cycle")} Turn</h2>
-    <form id="turn" class="panel stack">
+  const phase = model.turnGuide?.phase || "advance";
+  const report = model.turnGuide?.report;
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn);
+  const settled = (report?.settled || []).map((item) => {
+    if (item.proceeds != null) return `<li>Sale paid ${item.proceeds} GP.</li>`;
+    if (item.standardGp != null && item.status !== "ready") return `<li>Goods arrived, list ${item.standardGp} GP.</li>`;
+    if (item.name) return `<li>${esc(item.name)} finished.</li>`;
+    return `<li>${esc(item.label || item.status || "Resolved")}</li>`;
+  }).join("");
+  const advance = state.clock.turn == null
+    ? `<p class="banner warn">Set the Bastion turn in Settings before taking a turn. An unknown turn is not treated as turn 0.</p>`
+    : `<form id="take-turn" class="panel stack"><h3>1. Advance one Bastion turn</h3><p>The counter is turn ${state.clock.turn}. This moves it to turn ${state.clock.turn + 1} and resolves work that finishes then.</p><button class="primary" type="submit">Take the next turn</button></form>`;
+  const results = phase === "results" || phase === "date" || phase === "orders" ? `<section class="panel stack"><h3>2. What finished</h3>${settled || "<p class=\"muted\">Nothing finished on this turn.</p>"}${phase === "results" ? `<button type="button" data-action="show-date">Continue to the date</button>` : ""}</section>` : "";
+  const dateForm = canSetDate(model) && state.clock.turn != null
+    ? `<form id="reanchor" class="stack"><input type="hidden" name="turn" value="${state.clock.turn}">${calendarFields("override", shown || { turn: state.clock.turn })}<label for="override-reason">Why this date differs, if you override it <input id="override-reason" name="reason" maxlength="400"></label><button type="submit">Use this date for the current turn</button><p class="muted">This re-anchors the calendar at the current turn. Later turns follow it. The turn counter stays as it is.</p></form>`
+    : `<p class="muted">Sign in as a member of this estate to set the date.</p>`;
+  const showDate = state.clock.turn != null && (phase === "date" || phase === "orders" || !manage);
+  const dateStep = showDate ? `<section class="panel stack"><h3>3. In-game date</h3><p>${shown?.text ? esc(`Turn ${state.clock.turn} · ${shown.text}`) : "No in-game date yet. Set an anchor, for example turn 1 is 10 Tarsakh."}</p>${shown?.shieldmeetUncertain ? `<p class="muted">No year is set, so Shieldmeet was not inserted.</p>` : ""}${dateForm}${phase === "date" && manage ? `<button type="button" data-action="confirm-date">Keep the derived date</button>` : ""}</section>` : "";
+  const orders = phase === "orders" && manage ? `<form id="turn" class="panel stack"><h3>4. Orders for this turn</h3>
       <label>Owner unit <select id="turn-unit" name="unitId">${state.units.map((unit) => `<option value="${unit.id}">${esc(unit.name)} · level ${unit.level}</option>`).join("")}</select></label>
       <label>Where is the owner? <select id="presence" name="presence"><option value="present">Here</option><option value="absent_with_contact">Away, but can send word</option><option value="absent">Away, no message</option></select></label>
       <label>How they sent word, if they did <input id="contact" name="contact" maxlength="160"></label>
       <label>This turn <select id="mode" name="mode"><option value="orders">Issue orders</option><option value="maintain">Maintain the whole unit</option><option value="no_orders">No orders, owner unable</option></select></label>
-      <p class="muted">Maintain cannot share the turn with other orders. Being away without a message forces Maintain. Task lengths stay the facility's own days, not the turn length.</p>
-      ${specials.map((facility) => {
-        const spec = specialById(facility.catalogId);
-        return `<fieldset><legend>${facilityMark(spec)}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
-          <label>Order <select name="order-${facility.id}"><option value="">No order</option>${(spec?.subs || []).map((sub) => `<option value="${sub.id}">${esc(sub.label)}${sub.days == null ? "" : ` · ${sub.days} days`}</option>`).join("")}</select></label>
+      <p class="muted">Maintain cannot share the turn with other orders. Being away without a message forces Maintain. An order of 1 turn finishes the next time you take a turn.</p>
+      ${specials.map((facility) => `<fieldset><legend>${facilityMark(specialById(facility.catalogId))}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
+          <label>Order <select name="order-${facility.id}"><option value="">No order</option>${orderChoices(facility)}</select></label>
           <label>How many, if the order asks <input name="count-${facility.id}" inputmode="numeric" placeholder="1 to 4 for defenders"></label>
-        </fieldset>`;
-      }).join("")}
-      <button class="primary" type="submit">Commit turn</button>
-    </form>
+        </fieldset>`).join("")}
+      <button class="primary" type="submit">Commit orders</button>
+    </form>` : "";
+  return `<h2 class="with-mark">${mark("cycle")} Turn</h2>
+    <p class="muted">${esc(turnLine(state))}. Take a turn in order: advance the counter, see what finished, check the date, then choose orders.</p>
+    ${state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Confirm it in Settings before relying on it.</p>` : ""}
+    ${manage && phase === "advance" ? advance : ""}
+    ${manage ? "" : `<p class="banner warn">${canSetDate(model) ? "Advancing the turn and issuing orders stay with the DM or an editor. Any member can still set the in-game date." : "Sign in as a member of this estate to set the date. Advancing the turn stays with the DM or an editor."}</p>`}
+    ${results}
+    ${dateStep}
+    ${orders}
     ${pending ? `<form id="event" class="panel stack" style="margin-top:14px"><h3>Maintain event</h3>
       <p class="muted">Enter the dice you rolled, or choose the event. Opening this page again will not roll for you.</p>
       <label>d100, optional <input id="event-roll" name="roll" inputmode="numeric"></label>
@@ -488,7 +534,7 @@ function renderTurn(model) {
       <input type="hidden" id="event-id" value="${esc(pending.id)}">
       <button class="primary" type="submit">Resolve event</button>
     </form>` : ""}
-    <section class="panel" style="margin-top:14px"><h3>Recent turns</h3><ul>${state.turns.slice(-6).reverse().map((turn) => `<li>${esc(turn.mode)} · ${esc(turn.presence)} · day ${turn.day ?? "unknown"}</li>`).join("") || "<li>None yet.</li>"}</ul></section>`;
+    <section class="panel" style="margin-top:14px"><h3>Recent turns</h3><ul>${state.turns.slice(-6).reverse().map((turn) => `<li>${esc(turn.mode)} · ${esc(turn.presence)} · turn ${turn.turn ?? "unknown"}</li>`).join("") || "<li>None yet.</li>"}</ul></section>`;
 }
 
 function formAlert(id, message) {
@@ -529,7 +575,7 @@ function renderMoney(model) {
 function renderJournal(model) {
   const lines = model.state.audit.slice().reverse().slice(0, 40);
   return `<h2 class="with-mark">${mark("thread")} Journal</h2><p class="muted">Each saved change is listed. Overrides keep their reason.</p>
-    <ol>${lines.map((entry) => `<li><strong>${esc(entry.summary)}</strong><br><span class="muted">${esc(entry.actorRole || "")} ${entry.reason ? `· ${esc(entry.reason)}` : ""}</span></li>`).join("") || "<li>No entries yet.</li>"}</ol>
+    <ol>${lines.map((entry) => `<li><strong>${esc(entry.summary)}</strong><br><span class="muted">${esc(entry.actorEmail || entry.actorRole || "")} ${entry.reason ? `· ${esc(entry.reason)}` : ""}</span></li>`).join("") || "<li>No entries yet.</li>"}</ol>
     <button type="button" data-action="export">Download JSON backup</button>`;
 }
 
@@ -540,7 +586,8 @@ function renderSettings(model) {
   const highest = specials.reduce((max, item) => Math.max(max, specialById(item.catalogId)?.level || 0), 0);
   const levels = Array.from({ length: 20 }, (_, index) => index + 1);
   return `<h2 class="with-mark">${mark("key")} Settings</h2>
-    <p class="muted">Only the DM can save settings. Name, owner, level, turn length, date, and prerequisites are saved together. If one of them is refused, none of them change.</p>
+    <p class="muted">Only the DM can save the turn counter, name, owner, level, and prerequisites. Any member of the estate can set the in-game date. A session date is the real-world note, not the Harptos date.</p>
+    ${state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Saving a turn number here clears that warning. Set 3 if that is the turn you are on.</p>` : ""}
     <form id="settings" class="panel stack">
       <label>Estate name <input id="estate-name" name="name" value="${esc(state.name)}" maxlength="80"></label>
       <label>Owner label <input id="owner" name="owner" value="${esc(unit.owner)}" maxlength="120"></label>
@@ -549,19 +596,15 @@ function renderSettings(model) {
       </label>
       <p id="level-fit" class="muted">This unit has ${specials.length} special ${specials.length === 1 ? "facility" : "facilities"}. Level ${unit.level} allows ${specialCap(unit.level)}. ${highest ? `The highest requirement among them is level ${highest}.` : "No facility requirement yet."} A shut facility still counts. Saving a level that is too low for these rooms is refused.</p>
       <label><input id="grant-replacements" name="grantReplacements" type="checkbox"> This is a level-up. Add one replacement for each level gained.</label>
-      <label>Turn length in in-game days <input id="cadence" name="cadenceDays" inputmode="numeric" value="${state.clock.cadenceDays}"></label>
-      <label for="date-label">Date <input id="date-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if the date is unknown"></label>
-      <label>Day number <input id="ordinal" name="ordinal" inputmode="numeric" value="${state.clock.ordinal ?? ""}" placeholder="Unknown"></label>
+      <label for="session-label">Session date <input id="session-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if you are not noting a real-world date"></label>
+      <label for="turn-number">Bastion turn <input id="turn-number" name="turn" inputmode="numeric" value="${state.clock.turn ?? ""}" placeholder="Unknown"></label>
       <fieldset><legend>Prerequisites this owner meets</legend>
         ${Object.entries(PREREQ_LABELS).map(([id, label]) => `<label><input type="checkbox" name="cap" value="${id}" ${unit.capabilities.includes(id) ? "checked" : ""}> ${esc(label)}</label>`).join("")}
       </fieldset>
       <button class="primary" type="submit">Save settings</button>
-      <p class="muted">Choosing a level here does not add replacements unless the level-up box is checked, and only for levels actually gained. It does not look backward, and it does not add facilities. The turn length stays editable. A new record starts at 10 in-game days.</p>
+      <p class="muted">Choosing a level here does not add replacements unless the level-up box is checked, and only for levels actually gained. It does not look backward, and it does not add facilities. A new record leaves the Bastion turn unknown.</p>
     </form>
-    <form id="advance" class="panel stack" style="margin-top:14px">
-      <label>Advance in-game days <input id="advance-days" name="days" inputmode="numeric" value="1"></label>
-      <button type="submit">Advance the calendar</button>
-    </form>
+    ${canSetDate(model) ? `<form id="anchor" class="panel stack" style="margin-top:14px"><h3>In-game date anchor</h3><p class="muted">Example: turn 1 is 10 Tarsakh. Each later turn is seven in-world days later. Tarkesh is accepted as Tarsakh. Leave the year blank if you do not know it.</p><label for="anchor-turn">Anchor turn <input id="anchor-turn" name="turn" inputmode="numeric" value="${state.clock.anchor?.turn ?? 1}"></label>${calendarFields("anchor", state.clock.anchor)}<button class="primary" type="submit">Save calendar anchor</button></form>` : ""}
     <form id="split" class="panel stack">
       <h3>Separate owner</h3>
       <label>Name <input id="split-name" name="name" value="Character bastion"></label>
@@ -616,14 +659,14 @@ function renderRecord(model) {
     <form id="record-order" class="panel stack" style="margin-top:14px">
       <h3>Order already underway</h3>
       ${specials.length ? `<label>Facility and order <select id="record-order-key" name="orderKey">${orderOptions}</select></label>
-        <label for="order-started">In-game day it started <input id="order-started" name="startedDay" inputmode="numeric" value="${state.clock.ordinal ?? ""}" placeholder="Leave blank if you do not know"></label>
+        <label for="order-started">Bastion turn it started <input id="order-started" name="startedTurn" inputmode="numeric" value="${state.clock.turn ?? ""}" placeholder="Leave blank if you do not know"></label>
         <label>Note <input id="order-note" name="note" maxlength="240"></label>
         <button class="primary" type="submit">Mark order in progress</button>
-        <p class="muted">Use the same day number as Settings. Leave it blank if you do not know it. This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
+        <p class="muted">Use the same turn number as Settings. Leave it blank if you do not know it. Unknown stays unknown. This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
+      ${(state.orders || []).filter((order) => order.startNeedsCheck).map((order) => `<form class="stack" id="order-start-${esc(order.id)}"><p class="banner warn">${esc(order.id)} needs a start turn. A previous number, ${order.previousStartNumber ?? "unknown"}, was kept for review and is not the start turn.</p><input type="hidden" name="orderId" value="${esc(order.id)}"><label for="fix-${esc(order.id)}">Bastion turn it started <input id="fix-${esc(order.id)}" name="startedTurn" inputmode="numeric" placeholder="Leave blank only if you are marking it unknown"></label><button class="primary" type="submit">Save this start turn</button><button type="submit" name="unknown" value="on">Mark the start unknown</button></form>`).join("")}
       ${orders.length ? `<ul>${orders.map((order) => {
-        const day = orderStartedDay(order);
-        const today = day != null && state.clock.ordinal === day && state.clock.label ? ` · ${esc(state.clock.label)}` : "";
-        return `<li>${esc(order.label || order.suborder)} · started day ${day ?? "unknown"}${today}${order.note ? ` · ${esc(order.note)}` : ""}</li>`;
+        const started = orderStartedTurn(order);
+        return `<li>${esc(order.label || order.suborder)} · started turn ${order.startNeedsCheck ? "needs a check" : (started ?? "unknown")}${order.note ? ` · ${esc(order.note)}` : ""}</li>`;
       }).join("")}</ul>` : ""}
     </form>`;
 }
@@ -643,11 +686,11 @@ function renderHelp() {
     <div class="panel"><h3>Worked out for you</h3><ul>
       <li>Special facility cap, prerequisites, and the facilities that can repeat.</li>
       <li>One published replacement each time a level is gained after tracking starts. A mid-level swap is a separate DM correction and does not spend that replacement.</li>
-      <li>Basic room price and time, with no charge for rooms you mark as already owned.</li>
+      <li>Basic room price, with no charge for rooms you mark as already owned. The published build time is not a whole number of Bastion turns, so it is not scheduled.</li>
       <li>Barrack recruiting, up to 4, inside the 12 or 25 bed limit.</li>
-      <li>Storehouse buying and selling, including the 7-day wait. 500 GP of goods sells for 550 GP at level 5.</li>
+      <li>Storehouse buying and selling. Each one finishes on the next Bastion turn. 500 GP of goods sells for 550 GP at level 5.</li>
       <li>Armory stock price, tougher defense dice, then the stock is used up.</li>
-      <li>Wall squares, and fewer attack dice only after the enclosure is marked complete.</li>
+      <li>Wall squares are paid for, but their published time is not a whole number of Bastion turns, so you mark them finished. Fewer attack dice apply only after the enclosure is marked complete.</li>
       <li>Maintain for the whole owner, one event, and a shutdown that lasts the next turn.</li>
     </ul></div>
     <div class="panel"><h3>You still decide</h3><ul>

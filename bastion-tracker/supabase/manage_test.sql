@@ -121,10 +121,10 @@ begin
   rev := (out->>'revision')::bigint;
   doc := out->'document';
   select elem->>'id' into facility_id from jsonb_array_elements(doc->'facilities') elem where elem->>'catalogId' = 'smithy' limit 1;
-  out := public.apply_command(eid, rev, 'clock', '{"type":"set_clock","ordinal":4}'::jsonb);
+  out := public.apply_command(eid, rev, 'clock', '{"type":"set_clock","turn":4}'::jsonb);
   rev := (out->>'revision')::bigint;
   out := public.apply_command(eid, rev, 'running', jsonb_build_object(
-    'type', 'record_order', 'facilityId', facility_id, 'suborder', 'craft', 'startedDay', 4, 'note', 'Already at the forge'
+    'type', 'record_order', 'facilityId', facility_id, 'suborder', 'craft', 'startedTurn', 4, 'note', 'Already at the forge'
   ));
   rev := (out->>'revision')::bigint;
   begin

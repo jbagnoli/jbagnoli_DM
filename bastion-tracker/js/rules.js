@@ -1,3 +1,4 @@
+import { dateForTurn, normalizeAnchor } from "./calendar.js";
 import {
   BASIC_BUILD,
   BASIC_UPGRADE,
@@ -20,6 +21,8 @@ export class RuleError extends Error {
   }
 }
 
+const MEMBERS = new Set(["dm", "editor", "reader"]);
+const DATE_COMMANDS = new Set(["set_calendar_anchor", "reanchor_calendar"]);
 const WRITERS = new Set(["dm", "editor"]);
 const DM_ONLY = new Set([
   "set_settings",
@@ -48,6 +51,7 @@ const DM_ONLY = new Set([
   "replace_person",
   "assign_person",
   "cancel_project",
+  "set_order_start",
 ]);
 
 export function emptyEstate(options = {}) {
@@ -57,9 +61,10 @@ export function emptyEstate(options = {}) {
     practice: Boolean(options.practice),
     name: options.name || "Unnamed bastion",
     clock: {
-      label: options.dateLabel || "",
-      ordinal: options.dayOrdinal ?? null,
-      cadenceDays: options.cadenceDays ?? 10,
+      label: options.sessionLabel || options.dateLabel || "",
+      turn: options.turn ?? null,
+      turnNeedsCheck: false,
+      anchor: null,
     },
     finance: {
       cashKnown: false,
@@ -110,6 +115,10 @@ function roleOf(command) {
 
 function assertWriter(command) {
   const role = roleOf(command);
+  if (DATE_COMMANDS.has(command.type)) {
+    if (!MEMBERS.has(role)) throw new RuleError("forbidden", "Sign in as a member of this estate to set the in-game date.");
+    return;
+  }
   if (!WRITERS.has(role)) {
     throw new RuleError("forbidden", "A reader can look, but cannot change the record.");
   }
@@ -130,9 +139,9 @@ function facilityById(state, id) {
   return facility;
 }
 
-function requireClock(state) {
-  if (state.clock.ordinal == null) {
-    throw new RuleError("calendar_unknown", "Set an in-game day before starting something that takes days. The date can stay blank until you know it.");
+function requireTurn(state) {
+  if (state.clock.turn == null) {
+    throw new RuleError("calendar_unknown", "Set the Bastion turn before starting something that takes turns. The session date can stay blank.");
   }
 }
 
@@ -149,13 +158,13 @@ function spend(state, gp, reason, command) {
     throw new RuleError("insufficient_cash", `That costs ${gp} GP and the recorded cash is ${state.finance.cashGp} GP.`);
   }
   state.finance.cashGp -= gp;
-  state.ledger.push({ id: nid(state, "led"), gp: -gp, reason, day: state.clock.ordinal, key: command.idempotencyKey || null });
+  state.ledger.push({ id: nid(state, "led"), gp: -gp, reason, turn: state.clock.turn, key: command.idempotencyKey || null });
 }
 
 function receive(state, gp, reason, command) {
   requireCash(state);
   state.finance.cashGp += gp;
-  state.ledger.push({ id: nid(state, "led"), gp, reason, day: state.clock.ordinal, key: command.idempotencyKey || null });
+  state.ledger.push({ id: nid(state, "led"), gp, reason, turn: state.clock.turn, key: command.idempotencyKey || null });
 }
 
 function activeSpecials(state, unitId) {
@@ -197,7 +206,8 @@ function pushAudit(state, command, summary) {
     summary,
     reason: command.reason || "",
     actorRole: roleOf(command),
-    day: state.clock.ordinal,
+    turn: state.clock.turn,
+    actorEmail: command.actorEmail || "",
   });
 }
 
@@ -244,9 +254,9 @@ function openTask(state, fields) {
   return task;
 }
 
-function dueDay(state, days) {
-  requireClock(state);
-  return state.clock.ordinal + days;
+function dueAfter(state, turns) {
+  requireTurn(state);
+  return state.clock.turn + turns;
 }
 
 export function apply(input, command) {
@@ -295,8 +305,18 @@ export function apply(input, command) {
       return addWalls(state, command);
     case "mark_enclosure":
       return markEnclosure(state, command);
-    case "advance_days":
-      return advanceDays(state, command);
+    case "take_turn":
+      return takeTurn(state, command);
+    case "set_calendar_anchor":
+      return setCalendarAnchor(state, command);
+    case "reanchor_calendar":
+      return reanchorCalendar(state, command);
+    case "set_order_start":
+      return setOrderStart(state, command);
+    case "finish_project":
+      return finishProject(state, command);
+    case "set_due_turn":
+      return setDueTurn(state, command);
     case "roster_save":
       return rosterSave(state, command);
     case "roster_remove":
@@ -340,33 +360,33 @@ export function apply(input, command) {
   }
 }
 
+function readTurn(value, allowBlank) {
+  if (value == null || value === "") {
+    if (allowBlank) return null;
+    throw new RuleError("bad_turn", "A Bastion turn is a whole number, starting at 1, or left unknown.");
+  }
+  const turn = Number(value);
+  if (!Number.isInteger(turn) || turn < 1) throw new RuleError("bad_turn", "A Bastion turn is a whole number, starting at 1, or left unknown.");
+  return turn;
+}
+
 function setSettings(state, command) {
   if (command.name) state.name = String(command.name).slice(0, 80);
-  if (command.cadenceDays != null) {
-    const days = Number(command.cadenceDays);
-    if (!Number.isInteger(days) || days < 1 || days > 365) {
-      throw new RuleError("bad_cadence", "Cadence is a whole number of in-game days, at least 1.");
-    }
-    state.clock.cadenceDays = days;
-  }
   if (command.unitName || command.owner) {
     const unit = unitById(state, command.unitId || state.units[0].id);
     if (command.unitName) unit.name = String(command.unitName).slice(0, 80);
     if (command.owner) unit.owner = String(command.owner).slice(0, 120);
   }
-  return finish(state, command, { cadenceDays: state.clock.cadenceDays }, "Updated estate settings.");
+  return finish(state, command, { turn: state.clock.turn }, "Updated estate settings.");
 }
 
 function setClock(state, command) {
   if (command.label != null) state.clock.label = String(command.label).slice(0, 120);
-  if (command.ordinal === null) {
-    state.clock.ordinal = null;
-  } else if (command.ordinal != null) {
-    const ordinal = Number(command.ordinal);
-    if (!Number.isInteger(ordinal) || ordinal < 0) throw new RuleError("bad_day", "The day count has to be a whole number, or stay unknown.");
-    state.clock.ordinal = ordinal;
+  if (Object.prototype.hasOwnProperty.call(command, "turn")) {
+    state.clock.turn = readTurn(command.turn, true);
+    state.clock.turnNeedsCheck = false;
   }
-  return finish(state, command, { clock: state.clock }, "Updated the in-game clock.");
+  return finish(state, command, { clock: { turn: state.clock.turn, label: state.clock.label } }, "Updated the Bastion turn and the session date.");
 }
 
 function setFinance(state, command) {
@@ -379,7 +399,7 @@ function setFinance(state, command) {
   if (!Number.isInteger(cash) || cash < 0) throw new RuleError("bad_amount", "Opening cash is a whole number of GP, or left unknown.");
   state.finance.cashKnown = true;
   state.finance.cashGp = cash;
-  state.ledger.push({ id: nid(state, "led"), gp: 0, reason: `Opening cash set to ${cash} GP`, day: state.clock.ordinal, key: command.idempotencyKey || null });
+  state.ledger.push({ id: nid(state, "led"), gp: 0, reason: `Opening cash set to ${cash} GP`, turn: state.clock.turn, key: command.idempotencyKey || null });
   return finish(state, command, { cashGp: cash }, `Set opening cash to ${cash} GP.`);
 }
 
@@ -440,23 +460,13 @@ function setLevel(state, command) {
 
 function saveSettings(state, command) {
   if (command.name) state.name = String(command.name).slice(0, 80);
-  if (command.cadenceDays != null && command.cadenceDays !== "") {
-    const days = Number(command.cadenceDays);
-    if (!Number.isInteger(days) || days < 1 || days > 365) {
-      throw new RuleError("bad_cadence", "Cadence is a whole number of in-game days, at least 1.");
-    }
-    state.clock.cadenceDays = days;
-  }
   const unit = unitById(state, command.unitId || state.units[0].id);
   if (command.unitName) unit.name = String(command.unitName).slice(0, 80);
   if (command.owner) unit.owner = String(command.owner).slice(0, 120);
   if (command.label != null) state.clock.label = String(command.label).slice(0, 120);
-  if (command.ordinal === null || command.ordinal === "") {
-    state.clock.ordinal = null;
-  } else if (command.ordinal != null) {
-    const ordinal = Number(command.ordinal);
-    if (!Number.isInteger(ordinal) || ordinal < 0) throw new RuleError("bad_day", "The day count has to be a whole number, or stay unknown.");
-    state.clock.ordinal = ordinal;
+  if (Object.prototype.hasOwnProperty.call(command, "turn")) {
+    state.clock.turn = readTurn(command.turn, true);
+    state.clock.turnNeedsCheck = false;
   }
   let levelNote = "Level unchanged. No replacement was added.";
   if (command.level != null && command.level !== "") {
@@ -472,7 +482,7 @@ function saveSettings(state, command) {
   return finish(
     state,
     command,
-    { cadenceDays: state.clock.cadenceDays, level: unit.level, bank: unit.replacementBank },
+    { turn: state.clock.turn, level: unit.level, bank: unit.replacementBank },
     `Saved settings. ${levelNote}`,
   );
 }
@@ -812,7 +822,7 @@ function enlargeSpecial(state, command) {
   facility.hirelings += spec.enlargeHirelings || 0;
   if (spec.id === "garden") facility.plots = 2;
   if (spec.id === "stable") facility.vastCapacityLarge = 6;
-  return finish(state, command, { facilityId: facility.id }, `Enlarged ${facility.name} for ${spec.enlargeGp} GP. No extra days were added, because the chapter does not give a build time.`);
+  return finish(state, command, { facilityId: facility.id }, `Enlarged ${facility.name} for ${spec.enlargeGp} GP. No extra turns were added, because the chapter does not give a build time.`);
 }
 
 function addBasic(state, command) {
@@ -845,14 +855,13 @@ function addBasic(state, command) {
     name: room.name,
     space,
     gp: build.gp,
-    days: build.days,
-    startOrdinal: state.clock.ordinal,
-    dueOrdinal: dueDay(state, build.days),
+    unscheduled: true,
+    dueTurn: null,
+    startedTurn: state.clock.turn,
     status: "building",
   };
-  requireClock(state);
   state.projects.push(project);
-  return finish(state, command, { projectId: project.id, dueOrdinal: project.dueOrdinal, charged: build.gp }, `${room.name} costs ${build.gp} GP and is ready on day ${project.dueOrdinal}.`);
+  return finish(state, command, { projectId: project.id, dueTurn: null, charged: build.gp }, `${room.name} costs ${build.gp} GP. The published build time is not a whole number of Bastion turns, so no finish turn was scheduled.`);
 }
 
 function BASIC_ROOMS_SAFE(roomId) {
@@ -883,14 +892,14 @@ function upgradeBasic(state, command) {
     from: facility.space,
     space: step.to,
     gp: step.gp,
-    days: step.days,
-    startOrdinal: state.clock.ordinal,
-    dueOrdinal: dueDay(state, step.days),
+    unscheduled: true,
+    dueTurn: null,
+    startedTurn: state.clock.turn,
     status: "building",
   };
   facility.status = "building";
   state.projects.push(project);
-  return finish(state, command, { projectId: project.id, dueOrdinal: project.dueOrdinal }, `${facility.name} enlarges on day ${project.dueOrdinal}.`);
+  return finish(state, command, { projectId: project.id, dueTurn: null }, `${facility.name} is enlarging. The published time is not a whole number of Bastion turns, so no finish turn was scheduled.`);
 }
 
 function addWalls(state, command) {
@@ -898,21 +907,20 @@ function addWalls(state, command) {
   if (!Number.isInteger(count) || count < 1 || count > 200) throw new RuleError("bad_amount", "Enter how many 5-foot squares to start.");
   const gp = WALL_SQUARE.gp * count;
   spend(state, gp, `Wall squares ×${count}`, command);
-  const start = state.clock.ordinal;
-  requireClock(state);
   const ids = [];
   for (let i = 0; i < count; i += 1) {
     const square = {
       id: nid(state, "wall"),
       status: "building",
-      startOrdinal: start,
-      dueOrdinal: start + WALL_SQUARE.days,
+      unscheduled: true,
+      dueTurn: null,
+      startedTurn: state.clock.turn,
       gp: WALL_SQUARE.gp,
     };
     state.walls.squares.push(square);
     ids.push(square.id);
   }
-  return finish(state, command, { ids, dueOrdinal: start + WALL_SQUARE.days, charged: gp }, `${count} wall squares finish on day ${start + WALL_SQUARE.days}. They run together, so the days are not stacked. The enclosure is still not marked complete.`);
+  return finish(state, command, { ids, dueTurn: null, charged: gp }, `${count} wall squares are paid for. The published time is not a whole number of Bastion turns, so no finish turn was scheduled. The enclosure is still not marked complete.`);
 }
 
 function markEnclosure(state, command) {
@@ -921,32 +929,97 @@ function markEnclosure(state, command) {
   return finish(state, command, { complete: state.walls.enclosureComplete }, state.walls.enclosureComplete ? "Marked the walls as a complete enclosure." : "Cleared the complete-enclosure mark.");
 }
 
-function advanceDays(state, command) {
-  const days = Number(command.days);
-  if (!Number.isInteger(days) || days < 1 || days > 3650) throw new RuleError("bad_day", "Advance a whole number of in-game days.");
-  requireClock(state);
-  state.clock.ordinal += days;
-  if (command.label) state.clock.label = String(command.label).slice(0, 120);
+function takeTurn(state, command) {
+  requireTurn(state);
+  state.clock.turn += 1;
   const settled = settleDue(state, command);
-  return finish(state, command, { ordinal: state.clock.ordinal, settled }, `Advanced to day ${state.clock.ordinal}.`);
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn);
+  const dateText = shown?.text || "";
+  const summary = dateText
+    ? `Advanced to Bastion turn ${state.clock.turn}. The in-game date is ${dateText}.`
+    : `Advanced to Bastion turn ${state.clock.turn}. No in-game date is set.`;
+  return finish(state, command, { turn: state.clock.turn, date: dateText, shieldmeetUncertain: Boolean(shown?.shieldmeetUncertain), settled }, summary);
+}
+
+function applyAnchor(state, command, summary) {
+  const parsed = normalizeAnchor(command);
+  if (parsed.error) throw new RuleError("bad_date", parsed.error);
+  state.clock.anchor = parsed.anchor;
+  const shown = dateForTurn(parsed.anchor, parsed.anchor.turn);
+  return finish(state, command, { anchor: parsed.anchor, text: shown?.text || "" }, summary(parsed.anchor.turn, shown?.text || ""));
+}
+
+function setCalendarAnchor(state, command) {
+  return applyAnchor(state, command, (turn, text) => `Set the calendar anchor: turn ${turn} is ${text}. Later turns follow it. The turn counter was not changed.`);
+}
+
+function reanchorCalendar(state, command) {
+  requireTurn(state);
+  if (Number(command.turn) !== state.clock.turn) {
+    throw new RuleError("bad_turn", "A date override re-anchors the current Bastion turn. It does not create a second counter.");
+  }
+  const reason = String(command.reason || "").trim();
+  if (!reason) throw new RuleError("reason_required", "Say why this turn's date differs from the one derived so far.");
+  command.reason = reason.slice(0, 400);
+  return applyAnchor(state, command, (turn, text) => `Re-anchored turn ${turn} to ${text}. Later turns follow this date. ${reason}`);
+}
+
+function setOrderStart(state, command) {
+  const order = (state.orders || []).find((item) => item.id === command.orderId);
+  if (!order) throw new RuleError("missing_order", "That order is not on the record.");
+  if (command.unknown === true) {
+    order.startedTurn = null;
+    order.startNeedsCheck = false;
+    return finish(state, command, { orderId: order.id, startedTurn: null }, `Left the start of ${order.label || order.id} unknown. The old stored number was not used.`);
+  }
+  const started = readTurn(command.startedTurn, false);
+  if (state.clock.turn != null && started > state.clock.turn) {
+    throw new RuleError("bad_turn", "That Bastion turn is later than the current turn.");
+  }
+  order.startedTurn = started;
+  order.startNeedsCheck = false;
+  return finish(state, command, { orderId: order.id, startedTurn: started }, `Set the start of ${order.label || order.id} to Bastion turn ${started}.`);
+}
+
+function finishProject(state, command) {
+  const project = (state.projects || []).find((item) => item.id === command.projectId && item.status === "building");
+  if (!project) throw new RuleError("missing_project", "That build is not still in progress.");
+  completeProject(state, project);
+  return finish(state, command, { projectId: project.id, finished: true }, `Marked ${project.name} finished. No book duration was turned into a Bastion turn.`);
+}
+
+function setDueTurn(state, command) {
+  const due = readTurn(command.dueTurn, false);
+  const task = (state.tasks || []).find((item) => item.id === command.taskId);
+  if (!task) throw new RuleError("missing_task", "That timer is not on the record.");
+  task.dueTurn = due;
+  task.timerNeedsCheck = false;
+  return finish(state, command, { taskId: task.id, dueTurn: due }, `Set that work to finish on Bastion turn ${due}.`);
 }
 
 function settleDue(state, command) {
   const settled = [];
+  const turn = state.clock.turn;
   for (const task of state.tasks) {
-    if (task.status !== "open" || task.dueOrdinal == null || task.dueOrdinal > state.clock.ordinal) continue;
+    if (task.status !== "open" || task.dueTurn == null || task.dueTurn > turn) continue;
     if (task.auto === "storehouse_sell") settled.push(settleSale(state, task, command));
     else if (task.auto === "storehouse_buy") settled.push(settlePurchase(state, task, command));
     else {
       task.status = "ready";
-      settled.push({ taskId: task.id, status: "ready" });
+      settled.push({ taskId: task.id, status: "ready", label: task.note || "Order ready" });
     }
   }
   for (const project of state.projects) {
-    if (project.status === "building" && project.dueOrdinal <= state.clock.ordinal) completeProject(state, project);
+    if (project.status === "building" && project.dueTurn != null && project.dueTurn <= turn) {
+      completeProject(state, project);
+      settled.push({ projectId: project.id, name: project.name, status: "done" });
+    }
   }
   for (const square of state.walls.squares) {
-    if (square.status === "building" && square.dueOrdinal <= state.clock.ordinal) square.status = "built";
+    if (square.status === "building" && square.dueTurn != null && square.dueTurn <= turn) {
+      square.status = "built";
+      settled.push({ wallId: square.id, status: "built" });
+    }
   }
   return settled;
 }
@@ -1334,21 +1407,10 @@ function removeGoods(state, command) {
   return finish(state, command, { lotId: lot.id, removed: true }, `Removed ${lot.name || "unnamed goods"}. Cash was not changed.`);
 }
 
-function readStartedDay(command) {
-  const raw = Object.prototype.hasOwnProperty.call(command, "startedDay") ? command.startedDay : command.startedTurn;
-  if (raw == null || raw === "") return null;
-  const started = Number(raw);
-  if (!Number.isInteger(started) || started < 0) {
-    throw new RuleError("bad_day", "The in-game day it started has to be a whole number, or left blank.");
-  }
-  return started;
-}
-
-export function orderStartedDay(order) {
-  if (!order) return null;
-  if (order.startedDay != null && order.startedDay !== "") return Number(order.startedDay);
-  if (order.startedTurn != null && order.startedTurn !== "") return Number(order.startedTurn);
-  return null;
+export function orderStartedTurn(order) {
+  if (!order || order.startNeedsCheck) return null;
+  if (order.startedTurn == null || order.startedTurn === "") return null;
+  return Number(order.startedTurn);
 }
 
 function recordOrder(state, command) {
@@ -1357,9 +1419,9 @@ function recordOrder(state, command) {
   const spec = specialById(facility.catalogId);
   const sub = spec?.subs.find((item) => item.id === command.suborder);
   if (!sub) throw new RuleError("bad_order", `${facility.name} cannot take that order.`);
-  const started = readStartedDay(command);
-  if (started != null && state.clock.ordinal != null && started > state.clock.ordinal) {
-    throw new RuleError("bad_day", "That in-game day is later than the current day.");
+  const started = readTurn(command.startedTurn, true);
+  if (started != null && state.clock.turn != null && started > state.clock.turn) {
+    throw new RuleError("bad_turn", "That Bastion turn is later than the current turn.");
   }
   const note = String(command.note || "").slice(0, 240);
   if (!state.orders) state.orders = [];
@@ -1371,15 +1433,13 @@ function recordOrder(state, command) {
   order.suborder = sub.id;
   order.label = sub.label;
   order.status = "in_progress";
-  order.startedDay = started;
-  delete order.startedTurn;
+  order.startedTurn = started;
+  order.startNeedsCheck = false;
   order.note = note;
   order.auto = null;
   order.recorded = true;
   facility.currentOrderId = order.id;
-  // The stored day is only a label. It does not finish the order. Real task
-  // timers still use their own day counts, not the turn length.
-  return finish(state, command, { orderId: order.id, startedDay: started }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
+  return finish(state, command, { orderId: order.id, startedTurn: started }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
 }
 
 function recordGoods(state, command) {
@@ -1418,8 +1478,7 @@ function commitTurn(state, command) {
     contact: String(command.contact || "").slice(0, 160),
     mode,
     status: "committed",
-    day: state.clock.ordinal,
-    cadenceDays: state.clock.cadenceDays,
+    turn: state.clock.turn,
     orderIds: [],
   };
   state.turns.push(turn);
@@ -1525,10 +1584,10 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
       orderId: order.id,
       goodsName: request.goodsName == null ? "Goods" : goodsLabel(request.goodsName),
       standardGp,
-      dueOrdinal: dueDay(state, 7),
+      dueTurn: dueAfter(state, 1),
     });
     order.taskId = task.id;
-    order.dueOrdinal = task.dueOrdinal;
+    order.dueTurn = task.dueTurn;
   } else if (sub.auto === "storehouse_sell") {
     const lot = state.goods.find((item) => item.id === request.lotId && item.status === "on_hand");
     if (!lot) throw new RuleError("missing_goods", "Choose goods that are still on hand.");
@@ -1546,11 +1605,11 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
       lotId: lot.id,
       standardGp,
       proceeds,
-      dueOrdinal: dueDay(state, 7),
+      dueTurn: dueAfter(state, 1),
     });
     order.taskId = task.id;
-    order.dueOrdinal = task.dueOrdinal;
-    order.preview = { standardGp, proceeds, days: 7 };
+    order.dueTurn = task.dueTurn;
+    order.preview = { standardGp, proceeds, turns: 1 };
   } else if (sub.auto === "armory_stock") {
     const defenders = state.roster.filter((person) => person.unitId === unit.id && person.category === "defender" && person.status === "active").length;
     const hasSmithy = activeSpecials(state, unit.id).some((item) => item.catalogId === "smithy");
@@ -1578,26 +1637,26 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
     });
     order.status = "resolved";
   } else {
-    const days = request.days != null ? Number(request.days) : sub.days;
+    const turns = request.turns != null && request.turns !== "" ? Number(request.turns) : sub.turns;
     if (request.gp != null) {
       const gp = Number(request.gp);
       if (!Number.isInteger(gp) || gp < 0) throw new RuleError("bad_amount", "Enter a whole GP cost, or leave the order unpriced.");
       if (gp > 0) spend(state, gp, sub.label, command);
     }
-    if (days == null) {
+    if (turns == null) {
       order.status = "awaiting_dm";
       order.note = sub.note || "Enter a duration and any price from the rules outside this chapter.";
     } else {
-      if (!Number.isInteger(days) || days < 0) throw new RuleError("bad_day", "Duration has to be a whole number of days from the facility, not from the turn length.");
+      if (!Number.isInteger(turns) || turns < 0) throw new RuleError("bad_turn", "Duration has to be a whole number of Bastion turns.");
       const task = openTask(state, {
         auto: "manual",
         unitId: unit.id,
         orderId: order.id,
         note: String(request.note || sub.note || "").slice(0, 240),
-        dueOrdinal: days === 0 ? state.clock.ordinal : dueDay(state, days),
+        dueTurn: turns === 0 ? state.clock.turn : dueAfter(state, turns),
       });
       order.taskId = task.id;
-      order.dueOrdinal = task.dueOrdinal;
+      order.dueTurn = task.dueTurn;
     }
   }
   state.tasks;
@@ -1695,8 +1754,8 @@ function resolveEventBody(state, command, unit, event) {
       const die = Number(detail.die);
       if (!Number.isInteger(die) || die < 1 || die > 6) throw new RuleError("bad_roll", "Enter 1d6 for the gift.");
       event.detail.gp = die * 100;
-      event.detail.dueInDays = 7;
-      return { type: event.type, kind, gpLater: die * 100, note: "The gift is due after 7 days. Record it then; it is not cash today." };
+      event.detail.dueInTurns = 1;
+      return { type: event.type, kind, gpLater: die * 100, note: "The gift is due after 1 Bastion turn. Record it then; it is not cash today." };
     }
     if (kind === 3) {
       state.roster.push({
@@ -1730,7 +1789,7 @@ function resolveEventBody(state, command, unit, event) {
       });
       return { type: event.type, kind };
     }
-    return { type: event.type, kind, note: "Renowned guest stays 7 days. Record the letter yourself." };
+    return { type: event.type, kind, note: "Renowned guest stays 1 Bastion turn. Record the letter yourself." };
   }
   if (event.type === "lost_hirelings") {
     const facility = facilityById(state, detail.facilityId);
@@ -1855,7 +1914,8 @@ function dmOverride(state, command) {
     summary: String(command.summary || "DM override").slice(0, 200),
     reason: String(command.reason).slice(0, 400),
     actorRole: "dm",
-    day: state.clock.ordinal,
+    turn: state.clock.turn,
+    actorEmail: "",
   });
   if (command.patch && command.patch.facilityId) {
     const facility = state.facilities.find((item) => item.id === command.patch.facilityId) || state.archive.find((item) => item.id === command.patch.facilityId);

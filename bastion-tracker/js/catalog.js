@@ -12,22 +12,22 @@ export const BASIC_ROOMS = [
 export const SPACE_SQUARES = { cramped: 4, roomy: 16, vast: 36 };
 
 export const BASIC_BUILD = {
-  cramped: { gp: 500, days: 20 },
-  roomy: { gp: 1000, days: 45 },
-  vast: { gp: 3000, days: 125 },
+  cramped: { gp: 500, wholeTurn: false },
+  roomy: { gp: 1000, wholeTurn: false },
+  vast: { gp: 3000, wholeTurn: false },
 };
 
 export const BASIC_UPGRADE = {
-  cramped: { to: "roomy", gp: 500, days: 25 },
-  roomy: { to: "vast", gp: 2000, days: 80 },
+  cramped: { to: "roomy", gp: 500, wholeTurn: false },
+  roomy: { to: "vast", gp: 2000, wholeTurn: false },
 };
 
-export const WALL_SQUARE = { gp: 250, days: 10 };
+export const WALL_SQUARE = { gp: 250, wholeTurn: false };
 
 const manual = "manual";
 
-function order(id, label, days, auto = manual, note = "") {
-  return { id, label, days, auto, note };
+function order(id, label, turns, auto = manual, note = "") {
+  return { id, label, turns, auto, note };
 }
 
 /** @type {Array<object>} */
@@ -88,13 +88,13 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Harvest",
     source: "Bastions, Garden",
-    hint: "Harvest takes 7 days. Changing what the garden grows takes 21 days and the garden cannot do the other work during that time. A vast garden is two plots and one extra hireling.",
+    hint: "Harvest takes 1 turn. Changing what the garden grows takes 3 turns, and the garden cannot do the other work during that time. A vast garden is two plots and one extra hireling.",
     automation: "partial",
     enlargeGp: 2000,
     enlargeHirelings: 1,
     subs: [
-      order("harvest", "Harvest", 7, manual, "Record what was gathered. The chapter does not set a GP yield."),
-      order("convert", "Change the crop", 21, manual, "The garden is busy for 21 days."),
+      order("harvest", "Harvest", 1, manual, "Record what was gathered. The chapter does not set a GP yield."),
+      order("convert", "Change the crop", 3, manual, "The garden is busy for 3 turns."),
     ],
   },
   {
@@ -107,9 +107,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Research",
     source: "Bastions, Library",
-    hint: "A 7-day research task can produce up to three accurate facts. You write those facts; the book does not generate them.",
+    hint: "A 1-turn research task can produce up to three accurate facts. You write those facts; the book does not generate them.",
     automation: manual,
-    subs: [order("research", "Research", 7, manual, "Deliver the facts at the next contact. Three is the usual maximum.")],
+    subs: [order("research", "Research", 1, manual, "Deliver the facts at the next contact. Three is the usual maximum.")],
   },
   {
     id: "sanctuary",
@@ -121,9 +121,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Craft",
     source: "Bastions, Sanctuary",
-    hint: "Charm-style benefits last 7 days or until used, and they do not stack. Enter the exact charm in the log.",
+    hint: "Charm-style benefits last 1 turn or until used, and they do not stack. Enter the exact charm in the log.",
     automation: manual,
-    subs: [order("charm", "Prepare a charm", 7, manual)],
+    subs: [order("charm", "Prepare a charm", 1, manual)],
   },
   {
     id: "smithy",
@@ -152,11 +152,11 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Trade",
     source: "Bastions, Storehouse",
-    hint: "Buy or sell. Each job takes 7 days, even if bastion turns are longer. Buying pays the full price, up to 500 GP at level 5, 2,000 at 9, and 5,000 at 13. Selling pays 10% over the list price at level 5, then 20%, 50%, and 100% at levels 9, 13, and 17.",
+    hint: "Buy or sell. Each job takes 1 turn. Buying pays the full price, up to 500 GP at level 5, 2,000 at 9, and 5,000 at 13. Selling pays 10% over the list price at level 5, then 20%, 50%, and 100% at levels 9, 13, and 17.",
     automation: "full",
     subs: [
-      order("buy", "Buy goods", 7, "storehouse_buy"),
-      order("sell", "Sell goods", 7, "storehouse_sell"),
+      order("buy", "Buy goods", 1, "storehouse_buy"),
+      order("sell", "Sell goods", 1, "storehouse_sell"),
     ],
   },
   {
@@ -188,9 +188,9 @@ export const SPECIALS = [
     hirelings: 4,
     family: "Trade",
     source: "Bastions, Gaming Hall",
-    hint: "The hall pays after 7 days based on a roll. Do not record a payout before that roll.",
+    hint: "The hall pays after 1 turn based on a roll. Do not record a payout before that roll.",
     automation: "partial",
-    subs: [order("gamble", "Run the tables", 7, manual, "Enter the roll and the resulting GP when you have them.")],
+    subs: [order("gamble", "Run the tables", 1, manual, "Enter the roll and the resulting GP when you have them.")],
   },
   {
     id: "greenhouse",
@@ -202,9 +202,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Harvest",
     source: "Bastions, Greenhouse",
-    hint: "Fruit picked for the daily benefit lasts 24 hours. A harvest order still takes 7 days.",
+    hint: "Picked fruit does not last past the next long rest. A harvest order takes 1 turn.",
     automation: "partial",
-    subs: [order("harvest", "Harvest", 7, manual)],
+    subs: [order("harvest", "Harvest", 1, manual)],
   },
   {
     id: "laboratory",
@@ -216,9 +216,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Craft",
     source: "Bastions, Laboratory",
-    hint: "A poison order takes 7 days and costs half the listed price. The price list is outside this chapter, so type the listed price before anything is charged.",
+    hint: "A poison order takes 1 turn and costs half the listed price. The price list is outside this chapter, so type the listed price before anything is charged.",
     automation: "partial",
-    subs: [order("poison", "Brew a poison", 7, manual, "Enter the listed price. The tracker will halve that number and will not invent one.")],
+    subs: [order("poison", "Brew a poison", 1, manual, "Enter the listed price. The tracker will halve that number and will not invent one.")],
   },
   {
     id: "sacristy",
@@ -230,9 +230,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Craft",
     source: "Bastions, Sacristy",
-    hint: "Holy water takes 7 days. You may add 100 GP steps up to 500 GP for a stronger vial. Spell-slot recovery is a short-rest benefit that ends after a long rest.",
+    hint: "Holy water takes 1 turn. You may add 100 GP steps up to 500 GP for a stronger vial. Spell-slot recovery is a short-rest benefit that ends after a long rest.",
     automation: "partial",
-    subs: [order("holy_water", "Prepare holy water", 7, manual, "Optional extra GP in 100 GP steps, maximum 500.")],
+    subs: [order("holy_water", "Prepare holy water", 1, manual, "Optional extra GP in 100 GP steps, maximum 500.")],
   },
   {
     id: "scriptorium",
@@ -244,11 +244,11 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Craft",
     source: "Bastions, Scriptorium",
-    hint: "Copying a book takes 7 days and a blank book. Paperwork is up to 50 copies in 7 days at 1 GP each. Spell-scroll time and price come from the Player's Handbook.",
+    hint: "Copying a book takes 1 turn and a blank book. Paperwork is up to 50 copies in 1 turn at 1 GP each. Spell-scroll time and price come from the Player's Handbook.",
     automation: "partial",
     subs: [
-      order("copy", "Copy a book", 7, manual, "Requires a blank book."),
-      order("paperwork", "Copy paperwork", 7, manual, "Up to 50 copies, 1 GP each, delivered within 50 miles."),
+      order("copy", "Copy a book", 1, manual, "Requires a blank book."),
+      order("paperwork", "Copy paperwork", 1, manual, "Up to 50 copies, 1 GP each, delivered within 50 miles."),
       order("scroll", "Copy a spell scroll", null, manual, "Enter Player's Handbook time and price."),
     ],
   },
@@ -262,11 +262,11 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Trade",
     source: "Bastions, Stable",
-    hint: "Holds 3 Large creatures, or two Medium ones in a Large space. Buying or selling takes 7 days. Sale bonus is 20% at level 9, 50% at 13, and 100% at 17. Mount prices come from outside this chapter.",
+    hint: "Holds 3 Large creatures, or two Medium ones in a Large space. Buying or selling takes 1 turn. Sale bonus is 20% at level 9, 50% at 13, and 100% at 17. Mount prices come from outside this chapter.",
     automation: "partial",
     enlargeGp: 2000,
     vastCapacityLarge: 6,
-    subs: [order("trade", "Buy or sell mounts", 7, manual, "Enter the list price. The sale bonus is applied to the price you enter.")],
+    subs: [order("trade", "Buy or sell mounts", 1, manual, "Enter the list price. The sale bonus is applied to the price you enter.")],
   },
   {
     id: "teleportation_circle",
@@ -278,7 +278,7 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Recruit",
     source: "Bastions, Teleportation Circle",
-    hint: "An invited caster arrives only on an even roll. They stay 14 days or until one spell, and they leave if the bastion is attacked. Material costs are paid separately.",
+    hint: "An invited caster arrives only on an even roll. They stay 2 turns or until one spell, and they leave if the bastion is attacked. Material costs are paid separately.",
     automation: "partial",
     subs: [order("invite", "Invite a spellcaster", 0, manual, "Roll any die. Odd declines. Even accepts. Record the spell limit yourself.")],
   },
@@ -292,11 +292,11 @@ export const SPECIALS = [
     hirelings: 4,
     family: "Empower",
     source: "Bastions, Theater",
-    hint: "Rehearsal is 14 days, then a show of at least 7 days. The performance die, if earned, does not stack.",
+    hint: "Rehearsal is 2 turns, then a show of at least 1 turn. The performance die, if earned, does not stack.",
     automation: manual,
     subs: [
-      order("rehearse", "Rehearse", 14, manual),
-      order("show", "Stage a show", 7, manual),
+      order("rehearse", "Rehearse", 2, manual),
+      order("show", "Stage a show", 1, manual),
     ],
   },
   {
@@ -309,9 +309,9 @@ export const SPECIALS = [
     hirelings: 4,
     family: "Empower",
     source: "Bastions, Training Area",
-    hint: "Training is 7 days at 8 hours a day, then a 7-day benefit. You can train again later.",
+    hint: "Training takes 1 turn, then the benefit lasts 1 turn. You can train again later.",
     automation: manual,
-    subs: [order("train", "Train", 7, manual)],
+    subs: [order("train", "Train", 1, manual)],
   },
   {
     id: "trophy_room",
@@ -323,9 +323,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Research",
     source: "Bastions, Trophy Room",
-    hint: "Research takes 7 days. Write the facts the DM confirms; do not auto-fill lore.",
+    hint: "Research takes 1 turn. Write the facts the DM confirms; do not auto-fill lore.",
     automation: manual,
-    subs: [order("research", "Research a trophy", 7, manual)],
+    subs: [order("research", "Research a trophy", 1, manual)],
   },
   {
     id: "archive",
@@ -337,10 +337,10 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Research",
     source: "Bastions, Archive",
-    hint: "A 7-day research order can stand in for a legend-lore style question. Enlarging costs 2,000 GP. Confirm any extra vast benefit before you rely on it.",
+    hint: "A 1-turn research order can stand in for a legend-lore style question. Enlarging costs 2,000 GP. Confirm any extra vast benefit before you rely on it.",
     automation: manual,
     enlargeGp: 2000,
-    subs: [order("research", "Consult the archive", 7, manual)],
+    subs: [order("research", "Consult the archive", 1, manual)],
   },
   {
     id: "meditation_chamber",
@@ -352,9 +352,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Empower",
     source: "Bastions, Meditation Chamber",
-    hint: "You may roll the next bastion event twice and keep one. Staying in the bastion for 7 days can grant two different saving-throw benefits. Leaving the bastion ends that stay.",
+    hint: "You may roll the next bastion event twice and keep one. Staying in the bastion for 1 turn can grant two different saving-throw benefits. Leaving the bastion ends that stay.",
     automation: manual,
-    subs: [order("focus", "Meditate", 7, manual)],
+    subs: [order("focus", "Meditate", 1, manual)],
   },
   {
     id: "menagerie",
@@ -366,9 +366,9 @@ export const SPECIALS = [
     hirelings: 2,
     family: "Recruit",
     source: "Bastions, Menagerie",
-    hint: "Recruiting a creature takes 7 days. Prices are in the facility description; type the price you are using. A creature is not barrack housing. Say so if it will not count as a defender.",
+    hint: "Recruiting a creature takes 1 turn. Prices are in the facility description; type the price you are using. A creature is not barrack housing. Say so if it will not count as a defender.",
     automation: manual,
-    subs: [order("recruit", "Recruit a creature", 7, manual, "Enter the price and whether it counts as a defender.")],
+    subs: [order("recruit", "Recruit a creature", 1, manual, "Enter the price and whether it counts as a defender.")],
   },
   {
     id: "observatory",
@@ -380,9 +380,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Empower",
     source: "Bastions, Observatory",
-    hint: "Charm benefits last 7 days or until used and do not stack.",
+    hint: "Charm benefits last 1 turn or until used and do not stack.",
     automation: manual,
-    subs: [order("charm", "Read the sky", 7, manual)],
+    subs: [order("charm", "Read the sky", 1, manual)],
   },
   {
     id: "pub",
@@ -394,11 +394,11 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Research",
     source: "Bastions, Pub",
-    hint: "A 7-day order can gather rumors: bastion events within 10 miles, or a familiar creature within 50. A vast pub costs 2,000 GP, adds three hirelings, and has two taps. Tap changes follow the turn, not a separate 7-day clock.",
+    hint: "A 1-turn order can gather rumors: bastion events within 10 miles, or a familiar creature within 50. A vast pub costs 2,000 GP, adds three hirelings, and has two taps. Tap changes follow the Bastion turn.",
     automation: manual,
     enlargeGp: 2000,
     enlargeHirelings: 3,
-    subs: [order("rumor", "Listen for rumors", 7, manual)],
+    subs: [order("rumor", "Listen for rumors", 1, manual)],
   },
   {
     id: "reliquary",
@@ -410,9 +410,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Harvest",
     source: "Bastions, Reliquary",
-    hint: "A talisman takes 7 days to prepare, can replace components up to 1,000 GP, and needs another 7 days before it can be used that way again.",
+    hint: "A talisman takes 1 turn to prepare, can replace components up to 1,000 GP, and needs another turn before it can be used that way again.",
     automation: manual,
-    subs: [order("talisman", "Prepare a talisman", 7, manual)],
+    subs: [order("talisman", "Prepare a talisman", 1, manual)],
   },
   {
     id: "demiplane",
@@ -438,7 +438,7 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Recruit",
     source: "Bastions, Guildhall",
-    hint: "Guild jobs use the duration in the assignment, often 7 days or 1d6+1 days. Enter that duration. Masons change wall price and time only if you choose that assignment.",
+    hint: "Guild jobs use the duration in the assignment, often 1 turn. A rolled length may not be a whole turn, so enter the turn count you are using and do not expect this tracker to round it. Masons change wall price and time only if you choose that assignment.",
     automation: manual,
     subs: [order("assign", "Give a guild assignment", null, manual, "Enter the rolled or stated duration and any GP.")],
   },
@@ -454,7 +454,7 @@ export const SPECIALS = [
     source: "Bastions, Sanctum",
     hint: "Empowerment benefits are recorded by hand. They do not stack with the same charm.",
     automation: manual,
-    subs: [order("empower", "Empower", 7, manual)],
+    subs: [order("empower", "Empower", 1, manual)],
   },
   {
     id: "war_room",
@@ -466,11 +466,11 @@ export const SPECIALS = [
     hirelings: 2,
     family: "Recruit",
     source: "Bastions, War Room",
-    hint: "Starts with 2 lieutenants and can hold 10. Lieutenants are not defenders. Each one housed here reduces attack dice by 1. Mustering an army takes 7 days, and each guard or horse needs 1 GP of food a day.",
+    hint: "Starts with 2 lieutenants and can hold 10. Lieutenants are not defenders. Each one housed here reduces attack dice by 1. Mustering an army takes 1 turn. Enter feed costs yourself.",
     automation: "partial",
     subs: [
       order("lieutenant", "Recruit a lieutenant", 0, "war_lieutenant"),
-      order("army", "Muster soldiers", 7, manual, "100 guards or 20 mounted per lieutenant. Enter feed costs. The army is not tracked as free defenders."),
+      order("army", "Muster soldiers", 1, manual, "100 guards or 20 mounted per lieutenant. Enter feed costs yourself. The army is not tracked as free defenders."),
     ],
   },
 ];

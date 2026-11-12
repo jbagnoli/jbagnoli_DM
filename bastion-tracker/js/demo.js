@@ -12,7 +12,8 @@ export function practiceState() {
   const go = (command) => {
     state = apply(state, command).state;
   };
-  go({ type: "set_clock", ordinal: 12, label: "A spring day on the practice calendar" });
+  go({ type: "set_clock", turn: 2, label: "Practice session" });
+  go({ type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: null });
   go({ type: "set_finance", cashGp: 1300 });
   go({ type: "add_basic", unitId: "unit-party", roomId: "bedroom", space: "cramped", starter: true });
   go({ type: "add_basic", unitId: "unit-party", roomId: "kitchen", space: "roomy", starter: true });
