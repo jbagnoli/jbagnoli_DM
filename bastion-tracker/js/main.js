@@ -477,12 +477,10 @@ app.addEventListener("submit", async (event) => {
         name: data.name,
         owner: data.owner,
         unitId: model.state.units[0].id,
-        label: data.label,
         turn: data.turn === "" ? null : Number(data.turn),
         turnDays: Number(data.turnDays),
         skipFestivals: data.skipFestivals === "on",
         level: Number(data.level),
-        grantReplacements: data.grantReplacements === "on",
         capabilities,
       });
     } else if (form.id === "record-defenders") {
@@ -632,12 +630,23 @@ function turnCommand(data) {
       order.goodsName = data[`buy-name-${facility.id}`];
       order.standardGp = data[`buy-gp-${facility.id}`] === "" ? null : Number(data[`buy-gp-${facility.id}`]);
     }
+    if (facility.catalogId === "stable" && suborder === "trade") {
+      order.side = data[`stable-side-${facility.id}`] || "buy";
+      order.goodsName = data[`stable-name-${facility.id}`];
+      const list = data[`stable-gp-${facility.id}`];
+      order.standardGp = list === "" || list == null ? null : Number(list);
+    }
     orders.push(order);
   }
   return { type: "commit_turn", unitId: data.unitId, presence: data.presence, contact: data.contact, mode: data.mode, orders, notes: data.notes || "" };
 }
 
 app.addEventListener("change", (event) => {
+  if (event.target?.id === "level") {
+    model.levelPreview = Number(event.target.value);
+    paint();
+    return;
+  }
   const name = event.target?.name || "";
   if (!name.startsWith("order-")) return;
   const facilityId = name.slice("order-".length);

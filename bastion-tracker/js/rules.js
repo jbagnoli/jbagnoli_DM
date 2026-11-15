@@ -11,6 +11,7 @@ import {
   saleProceeds,
   specialById,
   specialCap,
+  stableSaleProceeds,
 } from "./catalog.js";
 
 export class RuleError extends Error {
@@ -64,7 +65,6 @@ export function emptyEstate(options = {}) {
     practice: Boolean(options.practice),
     name: options.name || "Unnamed bastion",
     clock: {
-      label: options.sessionLabel || options.dateLabel || "",
       turn: options.turn ?? null,
       turnNeedsCheck: false,
       turnDays: 10,
@@ -191,12 +191,6 @@ function unitDefenderCount(state, unitId) {
     return barracks.reduce((sum, item) => sum + (item.defenderCount || 0), 0);
   }
   return state.roster.filter((person) => person.unitId === unitId && person.category === "defender" && person.status === "active").length;
-}
-
-function syncSessionLabel(state) {
-  if (state.clock.turn == null) return;
-  const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
-  if (shown?.text) state.clock.label = shown.text;
 }
 
 function housedLieutenants(state, unitId) {
@@ -418,17 +412,15 @@ function applyCalendarSettings(state, command) {
     state.clock.turnDays = days;
   }
   if (command.skipFestivals === true || command.skipFestivals === false) state.clock.skipFestivals = command.skipFestivals;
-  syncSessionLabel(state);
 }
 
 function setClock(state, command) {
-  if (command.label != null) state.clock.label = String(command.label).slice(0, 120);
   if (Object.prototype.hasOwnProperty.call(command, "turn")) {
     state.clock.turn = readTurn(command.turn, true);
     state.clock.turnNeedsCheck = false;
   }
   applyCalendarSettings(state, command);
-  return finish(state, command, { clock: { turn: state.clock.turn, label: state.clock.label, turnDays: state.clock.turnDays, skipFestivals: state.clock.skipFestivals } }, "Updated the Bastion turn and the session date.");
+  return finish(state, command, { clock: { turn: state.clock.turn, turnDays: state.clock.turnDays, skipFestivals: state.clock.skipFestivals } }, "Updated the Bastion turn.");
 }
 
 function setFinance(state, command) {
@@ -455,8 +447,8 @@ function setCapabilities(state, command) {
 function raiseLevel(state, command) {
   const unit = unitById(state, command.unitId);
   const level = Number(command.level);
-  if (!Number.isInteger(level) || level < unit.level || level > 20) {
-    throw new RuleError("bad_level", "The new level has to be the same or higher, up to 20.");
+  if (!Number.isInteger(level) || level < Math.max(unit.level, 5) || level > 20) {
+    throw new RuleError("bad_level", "The new level has to be the same or higher, from 5 to 20.");
   }
   const gained = level - unit.level;
   unit.level = level;
@@ -468,10 +460,28 @@ function occupiedSpecials(state, unitId) {
   return state.facilities.filter((item) => item.unitId === unitId && item.kind === "special" && item.status !== "archived");
 }
 
-function applyDirectLevel(state, unit, level, grant) {
+export function levelOrderWarnings(state, unit, nextLevel) {
+  const warnings = [];
+  for (const order of state.orders || []) {
+    if (order.unitId !== unit.id || ["resolved", "cancelled"].includes(order.status)) continue;
+    const facility = state.facilities.find((item) => item.id === order.facilityId);
+    if (order.suborder === "craft_magic" && nextLevel < 9) {
+      warnings.push(`${facility?.name || "A workshop"}: magic-item crafting needs level 9.`);
+    }
+  }
+  for (const task of state.tasks || []) {
+    if (task.unitId !== unit.id || task.status !== "open" || task.settled) continue;
+    if (task.auto === "storehouse_buy" && task.standardGp > buyLimitGp(nextLevel)) {
+      warnings.push(`A Storehouse purchase of ${task.standardGp} GP is over the ${buyLimitGp(nextLevel)} GP limit at level ${nextLevel}.`);
+    }
+  }
+  return warnings;
+}
+
+function applyDirectLevel(state, unit, level) {
   const next = Number(level);
-  if (!Number.isInteger(next) || next < 1 || next > 20) {
-    throw new RuleError("bad_level", "Choose a level from 1 to 20.");
+  if (!Number.isInteger(next) || next < 5 || next > 20) {
+    throw new RuleError("bad_level", "A bastion level is from 5 to 20.");
   }
   const specials = occupiedSpecials(state, unit.id);
   const cap = specialCap(next);
@@ -484,20 +494,15 @@ function applyDirectLevel(state, unit, level, grant) {
       throw new RuleError("level_gate", `${spec.name} requires level ${spec.level}. Level ${next} is below what this unit's facilities require.`);
     }
   }
-  const gained = next - unit.level;
   unit.level = next;
-  const granted = grant && gained > 0 ? gained : 0;
-  if (granted) unit.replacementBank += granted;
-  return { gained, granted };
+  return { warnings: levelOrderWarnings(state, unit, next) };
 }
 
 function setLevel(state, command) {
   const unit = unitById(state, command.unitId || state.units[0].id);
-  const outcome = applyDirectLevel(state, unit, command.level, command.grantReplacements === true);
-  const summary = outcome.granted
-    ? `Level ${unit.level}. One replacement was added for each level gained (${outcome.granted}).`
-    : `Level set to ${unit.level}. No replacement was added.`;
-  return finish(state, command, { level: unit.level, bank: unit.replacementBank, granted: outcome.granted }, summary);
+  const outcome = applyDirectLevel(state, unit, command.level);
+  const warning = outcome.warnings.length ? ` Still in progress: ${outcome.warnings.join(" ")}` : "";
+  return finish(state, command, { level: unit.level, warnings: outcome.warnings }, `Level set to ${unit.level}.${warning}`);
 }
 
 function saveSettings(state, command) {
@@ -505,18 +510,16 @@ function saveSettings(state, command) {
   const unit = unitById(state, command.unitId || state.units[0].id);
   if (command.unitName) unit.name = String(command.unitName).slice(0, 80);
   if (command.owner) unit.owner = String(command.owner).slice(0, 120);
-  if (command.label != null) state.clock.label = String(command.label).slice(0, 120);
   if (Object.prototype.hasOwnProperty.call(command, "turn")) {
     state.clock.turn = readTurn(command.turn, true);
     state.clock.turnNeedsCheck = false;
   }
   applyCalendarSettings(state, command);
-  let levelNote = "Level unchanged. No replacement was added.";
+  let levelNote = "Level unchanged.";
   if (command.level != null && command.level !== "") {
-    const outcome = applyDirectLevel(state, unit, command.level, command.grantReplacements === true);
-    levelNote = outcome.granted
-      ? `Level ${unit.level}. One replacement was added for each level gained (${outcome.granted}).`
-      : `Level set to ${unit.level}. No replacement was added.`;
+    const outcome = applyDirectLevel(state, unit, command.level);
+    levelNote = `Level set to ${unit.level}.`;
+    if (outcome.warnings.length) levelNote += ` Still in progress: ${outcome.warnings.join(" ")}`;
   }
   if (Array.isArray(command.capabilities)) {
     const allowed = new Set(["arcane_or_tool", "holy_or_druid", "spellcasting_focus", "expertise", "fighting_or_unarmored"]);
@@ -978,7 +981,6 @@ function takeTurn(state, command) {
   requireTurn(state);
   state.clock.turn += 1;
   const settled = settleDue(state, command);
-  syncSessionLabel(state);
   const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
   const dateText = shown?.text || "";
   const summary = dateText
@@ -991,7 +993,6 @@ function applyAnchor(state, command, summary) {
   const parsed = normalizeAnchor(command);
   if (parsed.error) throw new RuleError("bad_date", parsed.error);
   state.clock.anchor = parsed.anchor;
-  syncSessionLabel(state);
   const shown = dateForTurn(parsed.anchor, parsed.anchor.turn, state.clock);
   return finish(state, command, { anchor: parsed.anchor, text: shown?.text || "" }, summary(parsed.anchor.turn, shown?.text || ""));
 }
@@ -1101,6 +1102,7 @@ function settleDue(state, command) {
     if (task.status !== "open" || task.dueTurn == null || task.dueTurn > turn) continue;
     if (task.auto === "storehouse_sell") settled.push(settleSale(state, task, command));
     else if (task.auto === "storehouse_buy") settled.push(settlePurchase(state, task, command));
+    else if (task.auto === "stable_sell") settled.push(settleStableSale(state, task, command));
     else {
       task.status = "ready";
       settled.push({ taskId: task.id, status: "ready", label: task.note || "Order ready" });
@@ -1157,6 +1159,14 @@ function settleSale(state, task, command) {
     lot.reservedGp = Math.max(0, (lot.reservedGp || 0) - task.standardGp);
     if (lot.standardGp <= 0) lot.status = "sold";
   }
+  return { taskId: task.id, proceeds: task.proceeds };
+}
+
+function settleStableSale(state, task, command) {
+  if (task.settled) return { taskId: task.id, replay: true, proceeds: task.proceeds };
+  receive(state, task.proceeds, `Sold a mount listed at ${task.standardGp} GP`, command);
+  task.settled = true;
+  task.status = "resolved";
   return { taskId: task.id, proceeds: task.proceeds };
 }
 
@@ -1625,6 +1635,7 @@ function commitTurn(state, command) {
     mode,
     status: "committed",
     turn: state.clock.turn,
+    date: dateForTurn(state.clock.anchor, state.clock.turn, state.clock)?.text || "date not set",
     orderIds: [],
     notes: readTurnNotes(command),
   };
@@ -1775,6 +1786,39 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
       protectsOnce: false,
     });
     order.status = "resolved";
+  } else if (facility.catalogId === "stable" && sub.id === "trade") {
+    const list = Number(request.standardGp ?? request.gp);
+    if (!Number.isInteger(list) || list < 1) throw new RuleError("bad_amount", "Enter the mount's list price in whole GP.");
+    const name = String(request.goodsName || "mount").trim().slice(0, 80) || "mount";
+    if (request.side === "sell") {
+      const proceeds = stableSaleProceeds(list);
+      const task = openTask(state, {
+        auto: "stable_sell",
+        unitId: unit.id,
+        orderId: order.id,
+        goodsName: name,
+        standardGp: list,
+        proceeds,
+        dueTurn: dueAfter(state, 1),
+      });
+      order.taskId = task.id;
+      order.dueTurn = task.dueTurn;
+      order.auto = "stable_sell";
+      order.preview = { standardGp: list, proceeds };
+    } else {
+      spend(state, list, `Stable purchase of ${name}`, command);
+      const task = openTask(state, {
+        auto: "stable_buy",
+        unitId: unit.id,
+        orderId: order.id,
+        goodsName: name,
+        standardGp: list,
+        dueTurn: dueAfter(state, 1),
+      });
+      order.taskId = task.id;
+      order.dueTurn = task.dueTurn;
+      order.auto = "stable_buy";
+    }
   } else {
     const turns = request.turns != null && request.turns !== "" ? Number(request.turns) : sub.turns;
     if (request.gp != null) {

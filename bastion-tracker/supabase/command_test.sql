@@ -349,7 +349,7 @@ begin
     perform public.apply_command(eid, rev, 'save-bad', '{"type":"save_settings","name":"Renamed","unitId":"unit-party","level":1}'::jsonb);
     perform public._cmd_fail('illegal level was saved');
   exception when invalid_parameter_value then
-    if SQLERRM not like 'Level 1 allows%' then raise; end if;
+    if SQLERRM not like 'A bastion level is from 5 to 20.%' then raise; end if;
   end;
   select document, revision into doc, column_rev from public.estates where id = eid;
   if column_rev <> before_rev or doc->>'name' <> 'Hearthwatch Hold' or (doc#>>'{clock,turn}')::int <> 3 then
@@ -358,8 +358,8 @@ begin
   out := public.apply_command(eid, rev, 'grant', '{"type":"set_level","unitId":"unit-party","level":14,"grantReplacements":true}'::jsonb);
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if (doc#>>'{units,0,replacementBank}')::int <> 1 then
-    perform public._cmd_fail('explicit level-up did not grant one replacement');
+  if (doc#>>'{units,0,replacementBank}')::int <> 0 then
+    perform public._cmd_fail('level save granted a replacement');
   end if;
 
   perform set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', false);

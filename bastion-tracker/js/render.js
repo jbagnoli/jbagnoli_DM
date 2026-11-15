@@ -1,7 +1,7 @@
 import { FESTIVALS, MONTHS, dateForTurn } from "./calendar.js";
-import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, buyLimitGp, specialById, specialCap } from "./catalog.js";
+import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, buyLimitGp, specialById, specialCap, theaterDie, teleportSpellLevel } from "./catalog.js";
 import { turnReports } from "./journal.js";
-import { facilityClosureFacts, openSaleCover, orderStartedTurn } from "./rules.js";
+import { facilityClosureFacts, levelOrderWarnings, openSaleCover, orderStartedTurn } from "./rules.js";
 import { markSavingButtons } from "./save-feedback.js";
 import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
@@ -150,9 +150,8 @@ function renderDashboard(model) {
   const defenders = defenderTotal(state);
   const projects = [...state.projects.filter((item) => item.status === "building"), ...state.walls.squares.filter((item) => item.status === "building")];
   const pending = state.events.filter((item) => item.status === "pending");
-  const session = state.clock.label ? `<p class="muted">Session date: ${esc(state.clock.label)}</p>` : "";
   const check = state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Confirm the Bastion turn in Settings. It was not changed to 3 automatically.</p>` : "";
-  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="muted">${esc(turnLine(state))}</p>${session}</header>
+  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="turn-line">${esc(turnLine(state))}</p></header>
     ${check}
     <div class="stats">
       <div class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></div>
@@ -295,6 +294,7 @@ function roomCard(model, item, unit, manage) {
   return `<article class="facility card"><h3 class="with-mark">${facilityMark(spec)}<span>${esc(item.name)}</span></h3>
     <p class="muted">${esc(item.kind)} · ${esc(item.space)} · ${esc(item.status)}${item.acquired ? ` · ${esc(acquiredLabel(item.acquired))}` : ""}${item.note ? ` · ${esc(item.note)}` : ""}</p>
     <p>${esc(spec?.hint || "Basic room. No orders.")}</p>
+    ${facilityNote(item, unit) ? `<p>${esc(facilityNote(item, unit))}</p>` : ""}
     <p class="muted">${facts.hirelings ? `${facts.hirelings} hireling${facts.hirelings === 1 ? "" : "s"} assigned. ` : ""}${facts.defenders ? `${facts.defenders} defender${facts.defenders === 1 ? "" : "s"} housed. ` : ""}${facts.orders || facts.tasks || facts.projects ? "Unfinished work is still on this room." : ""}</p>
     ${actions}
     ${open === "edit" ? editRoomForm(item) : ""}
@@ -488,6 +488,21 @@ function calendarFields(prefix, anchor) {
     <label for="${prefix}-year">Year, if you know it <input id="${prefix}-year" name="year" inputmode="numeric" value="${anchor?.year ?? ""}" placeholder="Leave blank if the year is unknown"></label>`;
 }
 
+function facilityNote(item, unit) {
+  if (item.catalogId === "theater") return `Performance die: ${theaterDie(unit?.level || 5)}.`;
+  if (item.catalogId === "teleportation_circle") return `Teleportation Circle: ${teleportSpellLevel(unit?.level || 5)} level.`;
+  if (item.catalogId === "stable") return "A sale pays 20 percent over the list price. The tracker adds that.";
+  return "";
+}
+
+function stableFields(facility, choice) {
+  if (facility.catalogId !== "stable" || choice !== "trade") return "";
+  return `<label>Buy or sell <select name="stable-side-${esc(facility.id)}"><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
+    <label>What <input name="stable-name-${esc(facility.id)}" maxlength="80" placeholder="Mount"></label>
+    <label>List price (GP) <input name="stable-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Whole GP"></label>
+    <p class="muted">A sale is paid on the next Bastion turn, at 20 percent over this list price.</p>`;
+}
+
 function tradeFields(state, facility, choice) {
   if (facility.catalogId === "barrack" && choice === "recruit") {
     return `<label>How many <input name="count-${esc(facility.id)}" inputmode="numeric" placeholder="1 to 4"></label>`;
@@ -548,9 +563,13 @@ function renderTurn(model) {
       <p class="muted">Maintain cannot share the turn with other orders. Being away without a message forces Maintain. An order of 1 turn finishes the next time you take a turn.</p>
       ${specials.map((facility) => {
         const choice = model.orderChoice?.[facility.id] || "";
+        const unit = state.units.find((item) => item.id === facility.unitId) || state.units[0];
+        const note = facilityNote(facility, unit);
         return `<fieldset><legend>${facilityMark(specialById(facility.catalogId))}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
+          ${note ? `<p>${esc(note)}</p>` : ""}
           <label>Order <select name="order-${facility.id}"><option value="">No order</option>${orderChoices(facility, choice)}</select></label>
           ${tradeFields(state, facility, choice)}
+          ${stableFields(facility, choice)}
         </fieldset>`;
       }).join("")}
       <label for="turn-notes">Note for this turn <textarea id="turn-notes" name="notes" maxlength="600" placeholder="Optional. At most 600 characters."></textarea></label>
@@ -648,15 +667,14 @@ function renderStewardJournal(model) {
         <span>Date: ${esc(report.date)}</span>
       </button>
       <div id="${panelId}" class="journal-brief" ${open ? "" : "hidden"}>
-        <p>${esc(report.brief)}</p>
-        ${report.notes ? `<p>${esc(report.notes)}</p>` : ""}
-        ${report.footnote ? `<p class="muted">${esc(report.footnote)}</p>` : ""}
+        ${(report.lines || []).map((line) => `<p>${esc(line)}</p>`).join("")}
+        ${report.notes ? `<p class="journal-notes">${esc(report.notes)}</p>` : ""}
       </div>
     </article>`;
   }).join("");
   return `<h2 class="with-mark">${mark("thread")} Journal</h2>
     <p class="muted">Reports from the record, one Bastion turn at a time. Nothing here changes the estate.</p>
-    <div class="journal-list">${cards || `<p class="muted">No turns have been recorded yet.</p>`}</div>`;
+    <div class="journal-list">${cards || `<article class="panel journal-card"><p class="journal-brief">No turns have been recorded yet.</p></article>`}</div>`;
 }
 
 function renderSettings(model) {
@@ -664,29 +682,30 @@ function renderSettings(model) {
   const unit = state.units[0];
   const specials = state.facilities.filter((item) => item.unitId === unit.id && item.kind === "special" && item.status !== "archived");
   const highest = specials.reduce((max, item) => Math.max(max, specialById(item.catalogId)?.level || 0), 0);
-  const levels = Array.from({ length: 20 }, (_, index) => index + 1);
+  const levels = Array.from({ length: 16 }, (_, index) => index + 5);
+  const chosen = Number(model.levelPreview ?? unit.level);
+  const warnings = Number.isInteger(chosen) && chosen < unit.level ? levelOrderWarnings(state, unit, chosen) : [];
   return `<h2 class="with-mark">${mark("key")} Settings</h2>
-    <p class="muted">Only the DM can save the turn counter, name, owner, level, and prerequisites. Any member of the estate can set the in-game date. A session date is the real-world note, not the Harptos date.</p>
+    <p class="muted">Only the DM can save the turn counter, name, owner, level, and prerequisites. Any member of the estate can set the in-game date. The date on the turn line is the in-game date.</p>
     ${state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Saving a turn number here clears that warning. Set 3 if that is the turn you are on.</p>` : ""}
     <form id="settings" class="panel stack">
       <label>Estate name <input id="estate-name" name="name" value="${esc(state.name)}" maxlength="80"></label>
       <label>Owner label <input id="owner" name="owner" value="${esc(unit.owner)}" maxlength="120"></label>
       <label for="level">Level
-        <select id="level" name="level">${levels.map((level) => `<option value="${level}" ${level === unit.level ? "selected" : ""}>${level}</option>`).join("")}</select>
+        <select id="level" name="level">${levels.map((level) => `<option value="${level}" ${level === chosen ? "selected" : ""}>${level}</option>`).join("")}</select>
       </label>
-      <p id="level-fit" class="muted">This unit has ${specials.length} special ${specials.length === 1 ? "facility" : "facilities"}. Level ${unit.level} allows ${specialCap(unit.level)}. ${highest ? `The highest requirement among them is level ${highest}.` : "No facility requirement yet."} A shut facility still counts. Saving a level that is too low for these rooms is refused.</p>
-      <label><input id="grant-replacements" name="grantReplacements" type="checkbox"> This is a level-up. Add one replacement for each level gained.</label>
-      <label for="session-label">Session date <input id="session-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if you are not noting a real-world date"></label>
+      <p id="level-fit" class="muted">This unit has ${specials.length} special ${specials.length === 1 ? "facility" : "facilities"}. Level ${unit.level} allows ${specialCap(unit.level)}. ${highest ? `The highest requirement among them is level ${highest}.` : "No facility requirement yet."} A shut facility still counts. Saving a level that does not fit these rooms is refused, and the old level stays.</p>
+      ${warnings.length ? `<p id="level-warning" class="banner warn" role="status">${warnings.map((line) => esc(line)).join(" ")}</p>` : ""}
       <label for="turn-number">Bastion turn <input id="turn-number" name="turn" inputmode="numeric" value="${state.clock.turn ?? ""}" placeholder="Unknown"></label>
-      <label for="turn-days">Turn length <select id="turn-days" name="turnDays"><option value="10" ${state.clock.turnDays !== 7 ? "selected" : ""}>Tenday</option><option value="7" ${state.clock.turnDays === 7 ? "selected" : ""}>Shorter chapter turn</option></select></label>
-      <label><input id="skip-festivals" name="skipFestivals" type="checkbox" ${state.clock.skipFestivals === false ? "" : "checked"}> Festival days are skipped, not counted in the turn</label>
+      <label for="turn-days">Turn length <select id="turn-days" name="turnDays"><option value="10" ${state.clock.turnDays !== 7 ? "selected" : ""}>Tenday (FR)</option><option value="7" ${state.clock.turnDays === 7 ? "selected" : ""}>7 days (DMG)</option></select></label>
+      <label class="check-line" for="skip-festivals"><input id="skip-festivals" name="skipFestivals" type="checkbox" ${state.clock.skipFestivals === false ? "" : "checked"}> Skip festival days</label>
       <fieldset><legend>Prerequisites this owner meets</legend>
         ${Object.entries(PREREQ_LABELS).map(([id, label]) => `<label><input type="checkbox" name="cap" value="${id}" ${unit.capabilities.includes(id) ? "checked" : ""}> ${esc(label)}</label>`).join("")}
       </fieldset>
       <button class="primary" type="submit">Save settings</button>
-      <p class="muted">Choosing a level here does not add replacements unless the level-up box is checked, and only for levels actually gained. It does not look backward, and it does not add facilities. A new record leaves the Bastion turn unknown.</p>
+      <p class="muted">Level is on the honor system. Saving it does not add replacements and does not record a reason. It is refused when the rooms no longer fit. Lowering it still saves when the rooms fit, and names any order that would no longer be legal. A new record leaves the Bastion turn unknown.</p>
     </form>
-    ${canSetDate(model) ? `<form id="anchor" class="panel stack" style="margin-top:14px"><h3>In-game date anchor</h3><p class="muted">Example: turn 1 is 10 Tarsakh. Each later turn is seven in-world days later. Tarkesh is accepted as Tarsakh. Leave the year blank if you do not know it.</p><label for="anchor-turn">Anchor turn <input id="anchor-turn" name="turn" inputmode="numeric" value="${state.clock.anchor?.turn ?? 1}"></label>${calendarFields("anchor", state.clock.anchor)}<button class="primary" type="submit">Save calendar anchor</button></form>` : ""}
+    ${canSetDate(model) ? `<form id="anchor" class="panel stack" style="margin-top:14px"><h3>In-game date anchor</h3><p class="muted">Example: turn 1 is 10 Tarsakh. Each later turn steps by the turn length above, skipping festival days when that box is checked. Any turn's date can be overridden. Tarkesh is accepted as Tarsakh. Leave the year blank if you do not know it.</p><label for="anchor-turn">Anchor turn <input id="anchor-turn" name="turn" inputmode="numeric" value="${state.clock.anchor?.turn ?? 1}"></label>${calendarFields("anchor", state.clock.anchor)}<button class="primary" type="submit">Save calendar anchor</button></form>` : ""}
     <form id="split" class="panel stack">
       <h3>Separate owner</h3>
       <label>Name <input id="split-name" name="name" value="Character bastion"></label>
