@@ -256,7 +256,7 @@ function renderRooms(model) {
   });
   const active = state.facilities.filter((item) => item.status !== "archived");
   return `<h2 class="with-mark">${mark("card")} Rooms</h2>
-    <p id="level-bank-note" class="muted">Adding a basic room uses time and money, unless you mark it as already owned. A special facility comes from the level cap, not from a purchase. Unused level-up replacements: ${unit.replacementBank}. Those are granted only when the level goes up after tracking starts. Removing a room, fixing a wrong room, or swapping a special facility before the next level is a DM correction. It is not the published once-per-level replacement, and it does not move cash.</p>
+    <p id="level-bank-note" class="muted">Adding a basic room uses time and money, unless you mark it as already owned. A special facility comes from the level cap, not from a purchase. Changing the level does not add a replacement. Unused replacements already on the record: ${unit.replacementBank}. Removing a room, fixing a wrong room, or swapping a special facility is a DM correction. It is not the published once-per-level replacement, and it does not move cash.</p>
     ${model.mode === "remote" && !model.role ? `<p class="banner warn">Your role could not be confirmed, so removing and replacing rooms stays off.</p>` : ""}
     ${!manage && model.role ? `<p class="banner warn">You can add a room. Removing, replacing, and correcting rooms stays with the DM.</p>` : ""}
     <div class="list">${active.map((item) => roomCard(model, item, unit, manage)).join("") || `<p class="muted">No rooms yet.</p>`}</div>

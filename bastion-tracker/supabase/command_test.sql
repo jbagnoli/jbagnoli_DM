@@ -173,15 +173,26 @@ begin
   out := public.apply_command(eid, rev, 'level6', '{"type":"raise_level","unitId":"unit-party","level":6}'::jsonb);
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if (doc#>>'{units,0,replacementBank}')::int <> 1 then
-    perform public._cmd_fail('level up did not grant one replacement');
+  if (doc#>>'{units,0,level}')::int <> 6 or (doc#>>'{units,0,replacementBank}')::int <> 0 then
+    perform public._cmd_fail('raise granted a replacement or skipped the level');
+  end if;
+  before_rev := rev;
+  begin
+    perform public.apply_command(eid, rev, 'level-low', '{"type":"raise_level","unitId":"unit-party","level":4}'::jsonb);
+    perform public._cmd_fail('a level below 5 was saved');
+  exception when invalid_parameter_value then
+    if SQLERRM not like 'A bastion level is from 5 to 20.%' then raise; end if;
+  end;
+  select revision into column_rev from public.estates where id = eid;
+  if column_rev <> before_rev or (select (document#>>'{units,0,level}')::int from public.estates where id = eid) <> 6 then
+    perform public._cmd_fail('refused level change wrote a revision');
   end if;
   select elem->>'id' into barrack_id from jsonb_array_elements(doc->'facilities') elem where elem->>'catalogId' = 'barrack' and elem->>'status' = 'active' limit 1;
-  out := public.apply_command(eid, rev, 'replace', jsonb_build_object('type', 'replace_special', 'unitId', 'unit-party', 'facilityId', barrack_id, 'catalogId', 'garden'));
+  out := public.apply_command(eid, rev, 'replace', jsonb_build_object('type', 'correct_special', 'unitId', 'unit-party', 'facilityId', barrack_id, 'catalogId', 'garden', 'reason', 'Practice swap without a replacement.'));
   rev := (out->>'revision')::bigint;
   doc := out->'document';
   if (doc#>>'{units,0,replacementBank}')::int <> 0 or jsonb_array_length(doc->'archive') < 1 then
-    perform public._cmd_fail('replacement');
+    perform public._cmd_fail('correction swap');
   end if;
   out := public.apply_command(eid, rev, 'direct9', '{"type":"set_level","unitId":"unit-party","level":9,"grantReplacements":false}'::jsonb);
   rev := (out->>'revision')::bigint;
@@ -215,6 +226,17 @@ begin
   doc := out->'document';
   if (doc#>>'{units,0,replacementBank}')::int <> 0 then
     perform public._cmd_fail('second direct level granted a replacement');
+  end if;
+  before_rev := rev;
+  begin
+    perform public.apply_command(eid, rev, 'level-cap', '{"type":"raise_level","unitId":"unit-party","level":5}'::jsonb);
+    perform public._cmd_fail('a level that does not fit the rooms was saved');
+  exception when invalid_parameter_value then
+    if SQLERRM not like 'Level 5 allows%' then raise; end if;
+  end;
+  select revision into column_rev from public.estates where id = eid;
+  if column_rev <> before_rev then
+    perform public._cmd_fail('refused level change wrote a revision');
   end if;
   out := public.apply_command(eid, rev, 'barrack2', '{"type":"add_special","unitId":"unit-party","catalogId":"barrack"}'::jsonb);
   rev := (out->>'revision')::bigint;

@@ -43,3 +43,5 @@ What changes for the table, and what we are not doing.
 - [0012](0012-honor-system-level.md) — Saving a level does not grant replacements. Below 5 is refused. 15 November 2026.
 - [0013](0013-stable-sale-and-shown-dice.md) — Stable sales add 20 percent. The Theater die and circle spell level are shown. 15 November 2026.
 - [0014](0014-journal-ledger.md) — The journal is a short ledger of committed turns only. 15 November 2026.
+- [0015](0015-estate-backdrop.md) — The estate art is the page background, with a dark scrim and brass accents. 15 November 2026.
+- [0016](0016-one-level-path.md) — Every level change uses the same checks and does not grant replacements. 15 November 2026.

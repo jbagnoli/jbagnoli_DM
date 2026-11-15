@@ -1,6 +1,6 @@
 # Bastion Tracker design requirements
 
-This is the design of the Bastion Tracker as it stands after the work through migration 010. It is written for the DM. It describes behavior, not a recipe for changing the database. Decisions are also kept as short records in `doc/adr/`. A later design change adds another one of those records.
+This is the design of the Bastion Tracker as it stands after the work through migration 011. It is written for the DM. It describes behavior, not a recipe for changing the database. Decisions are also kept as short records in `doc/adr/`. A later design change adds another one of those records.
 
 **Implemented** means the tracker already does this. **Planned** means John has agreed it, and it is not built yet.
 
@@ -22,9 +22,11 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** Unknown stays unknown. A blank opening cash is not zero. A blank Bastion turn is not turn 0. A blank in-game date is not invented.
 
-**Implemented.** Ownership is set on purpose. Saving a level is on the honor system. It does not add replacements and it does not record a reason. A level below 5 is refused. The save is also refused, and nothing is written, when the special-facility cap or a facility’s own minimum level does not fit. The caps are 2, 4, 5, and 6 special facilities at levels 5, 9, 13, and 17. If the rooms still fit but an order already underway would be illegal at the new level, the save still happens and names that order. Raising the level with the level-up action still adds one replacement for each level gained. Splitting off another owner asks for a confirmation, adds a new cap, and copies no rooms.
+**Implemented.** Ownership is set on purpose. Every way of changing a unit’s level uses the same check. That includes Settings and the older raise-level command. It does not add replacements and it does not record a reason. A level below 5 or above 20 is refused. The save is also refused, and nothing is written, when the special-facility cap or a facility’s own minimum level does not fit. The caps are 2, 4, 5, and 6 special facilities at levels 5, 9, 13, and 17. If the rooms still fit but an order already underway would be illegal at the new level, the save still happens and names that order. A new facility is added from the level cap. A replacement already recorded can still be spent. Splitting off another owner asks for a confirmation, adds a new cap, and copies no rooms. It is a new owner, not a level change of the current one.
 
 **Implemented.** Screens use real buttons and labeled fields, and they work on a phone as well as a desk. The Journal turn list is a set of buttons that say whether they are open.
+
+**Implemented.** The app sits on a fixed full-page backdrop of the estate art. A dark scrim keeps text readable. On a phone the art is biased toward the card fan at the lower right. The panels are dark charcoal with aged-brass headings, buttons, and focus rings, and bone-colored text. The Journal cards stay parchment with the handwriting font. Motion is not added to the backdrop.
 
 **Implemented.** Every saved change is recorded with who made it. On the shared record that is the person’s role and email. Reasons for overrides are kept.
 
@@ -118,4 +120,4 @@ These are not automated, on purpose. The DM or the player enters them, or leaves
 
 **14 November 2026.** Any signed-in member of the estate can set or change the in-game date, not only the DM. The DM can release goods that were reserved without an open sale. Journal and Backup are separate pages, and the journal is a steward’s report of recorded turns.
 
-**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The decision records are in `doc/adr/`.
+**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The page uses the estate art as its backdrop, and every level change uses that same honor-system check. The decision records are in `doc/adr/`.
