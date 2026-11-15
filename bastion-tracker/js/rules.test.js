@@ -27,7 +27,7 @@ function add(state, catalogId, unitId = "unit-party") {
   return apply(state, { type: "add_special", unitId, catalogId }).state;
 }
 
-test("level 6 cap is 2 and replacements follow levels gained", () => {
+test("level 6 cap is 2 and a recorded replacement can still be spent", () => {
   assert.equal(specialCap(6), 2);
   assert.equal(specialCap(5), 2);
   assert.equal(specialCap(9), 4);
@@ -35,7 +35,9 @@ test("level 6 cap is 2 and replacements follow levels gained", () => {
   assert.equal(specialCap(17), 6);
   let state = party();
   state = apply(state, { type: "raise_level", unitId: "unit-party", level: 6 }).state;
-  assert.equal(state.units[0].replacementBank, 1);
+  assert.equal(state.units[0].level, 6);
+  assert.equal(state.units[0].replacementBank, 0);
+  state.units[0].replacementBank = 1;
   assert.throws(() => apply(state, { type: "replace_special", unitId: "unit-party", facilityId: "missing", catalogId: "library" }), (error) => error.code === "missing_facility" || error.code === "no_replacement" || error instanceof RuleError);
   state = add(state, "barrack");
   state = add(state, "storehouse");
@@ -283,12 +285,12 @@ test("setting a level directly does not grant replacements", () => {
   state = add(state, "barrack");
   state = add(state, "storehouse");
   state = apply(state, { type: "raise_level", unitId: "unit-party", level: 6 }).state;
-  assert.equal(state.units[0].replacementBank, 1);
+  assert.equal(state.units[0].replacementBank, 0);
   const direct = apply(state, { type: "set_level", unitId: "unit-party", level: 9 }).state;
   assert.equal(direct.units[0].level, 9);
-  assert.equal(direct.units[0].replacementBank, 1);
+  assert.equal(direct.units[0].replacementBank, 0);
   const granted = apply(state, { type: "set_level", unitId: "unit-party", level: 9, grantReplacements: true }).state;
-  assert.equal(granted.units[0].replacementBank, 1);
+  assert.equal(granted.units[0].replacementBank, 0);
   assert.throws(() => apply(direct, { type: "set_level", unitId: "unit-party", level: 4 }), (error) => error.code === "bad_level");
   let high = apply(direct, { type: "set_level", unitId: "unit-party", level: 13 }).state;
   high = add(high, "archive");
@@ -1286,6 +1288,47 @@ test("theater and teleportation circle show the die and the spell level", () => 
   const low = render({ mode: "sandbox", view: "rooms", state: earlier, error: "", notice: "", configured: false, serviceRole: false });
   assert.match(low, /Performance die: d6/);
   assert.match(low, /Teleportation Circle: 4th level/);
+});
+
+test("raising the level uses the same checks as saving it", () => {
+  let state = withCash(add(add(party(), "smithy"), "storehouse"), 4000);
+  state = apply(state, { type: "set_level", unitId: "unit-party", level: 13 }).state;
+  const smithy = state.facilities.find((item) => item.catalogId === "smithy");
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  state = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [
+      { facilityId: smithy.id, suborder: "craft_magic", turns: 2, gp: 0 },
+      { facilityId: store.id, suborder: "buy", goodsName: "Ingots", standardGp: 3000 },
+    ],
+  }).state;
+  const bank = state.units[0].replacementBank;
+  const lowered = apply(state, { type: "raise_level", unitId: "unit-party", level: 8 });
+  assert.equal(lowered.state.units[0].level, 8);
+  assert.equal(lowered.state.units[0].replacementBank, bank);
+  assert.match(lowered.state.audit.at(-1).summary, /magic-item crafting needs level 9/);
+  assert.match(lowered.state.audit.at(-1).summary, /3000 GP is over the 500 GP limit/);
+  assert.throws(() => apply(state, { type: "raise_level", unitId: "unit-party", level: 4 }), (error) => error.code === "bad_level");
+  assert.equal(state.units[0].level, 13);
+  const crowded = add(add(state, "library"), "garden");
+  assert.throws(() => apply(crowded, { type: "raise_level", unitId: "unit-party", level: 5 }), (error) => error.code === "cap");
+  assert.equal(crowded.units[0].level, 13);
+});
+
+test("the backdrop keeps text on a dark scrim", async () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const css = await readFile(path.join(root, "app.css"), "utf8");
+  assert.match(css, /estate-backdrop\.webp/);
+  assert.match(css, /estate-backdrop\.jpg/);
+  assert.match(css, /background-size:\s*cover/);
+  assert.match(css, /75% 70%/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.doesNotMatch(css, /background-attachment:\s*fixed/);
+  assert.match(css, /--journal-paper:\s*#f4e6c8/);
+  assert.match(css, /--journal-ink:\s*#2a2118/);
 });
 
 test("the tracker no longer labels game time in days", async () => {

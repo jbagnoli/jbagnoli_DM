@@ -445,15 +445,7 @@ function setCapabilities(state, command) {
 }
 
 function raiseLevel(state, command) {
-  const unit = unitById(state, command.unitId);
-  const level = Number(command.level);
-  if (!Number.isInteger(level) || level < Math.max(unit.level, 5) || level > 20) {
-    throw new RuleError("bad_level", "The new level has to be the same or higher, from 5 to 20.");
-  }
-  const gained = level - unit.level;
-  unit.level = level;
-  unit.replacementBank += gained;
-  return finish(state, command, { level, gainedReplacements: gained, bank: unit.replacementBank }, gained ? `Level ${level}. One replacement was added for each level gained (${gained}).` : "Level unchanged.");
+  return setLevel(state, command);
 }
 
 function occupiedSpecials(state, unitId) {
@@ -722,7 +714,7 @@ function replaceSpecial(state, command) {
   if (correction && roleOf(command) !== "dm") throw new RuleError("forbidden", "Only the DM can correct a special facility.");
   if (correction) requireReason(command);
   if (!correction && unit.replacementBank < 1) {
-    throw new RuleError("no_replacement", "This level has no unused replacement. Gaining a level grants one. The current level by itself does not grant a stack of swaps.");
+    throw new RuleError("no_replacement", "This level has no unused replacement. Changing the level does not add one. Add the facility from the level cap, or correct the room.");
   }
   const closure = prepareFacilityClosure(state, current, command);
   const archivedReason = command.type === "correct_special"
