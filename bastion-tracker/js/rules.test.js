@@ -8,11 +8,13 @@ import { accessUserId, configured, isSecretKey, serviceRoleRejected } from "./re
 import { canAccept, markAgainstRecord, parseReview } from "./review.js";
 import { beginSave, failSave, markSavingButtons, succeedSave } from "./save-feedback.js";
 import { render } from "./render.js";
-import { RuleError, apply, emptyEstate, orderStartedDay } from "./rules.js";
+import { addCalendarDays, dateForTurn } from "./calendar.js";
+import { migrateTurns } from "./migrate-turns.js";
+import { RuleError, apply, emptyEstate, orderStartedTurn } from "./rules.js";
 
 function party() {
-  const state = emptyEstate({ name: "Practice Hall", cadenceDays: 7, level: 5 });
-  return apply(state, { type: "set_clock", ordinal: 1, label: "Practice day 1" }).state;
+  const state = emptyEstate({ name: "Practice Hall", level: 5 });
+  return apply(state, { type: "set_clock", turn: 1, label: "Practice session" }).state;
 }
 
 function withCash(state, gp) {
@@ -124,10 +126,8 @@ test("recruit adds four and stops at the housing cap", () => {
   }), (error) => error.code === "barrack_full");
 });
 
-test("500 GP of goods sell for 550 once after 7 days on a 10-day cadence", () => {
-  let state = party();
-  state = apply(state, { type: "set_settings", cadenceDays: 10 }).state;
-  state = withCash(state, 0);
+test("500 GP of goods sell for 550 on the next Bastion turn", () => {
+  let state = withCash(party(), 0);
   state = add(state, "storehouse");
   state = apply(state, { type: "record_goods", name: "Wool", standardGp: 500 }).state;
   const store = state.facilities[0];
@@ -140,26 +140,27 @@ test("500 GP of goods sell for 550 once after 7 days on a 10-day cadence", () =>
     orders: [{ facilityId: store.id, suborder: "sell", lotId: lot.id, standardGp: 500 }],
   }).state;
   assert.equal(state.finance.cashGp, 0);
-  assert.equal(state.tasks[0].dueOrdinal, 8);
+  assert.equal(state.tasks[0].dueTurn, 2);
   assert.equal(state.tasks[0].proceeds, 550);
   assert.equal(saleProceeds(500, 5), 550);
-  state = apply(state, { type: "advance_days", days: 7, idempotencyKey: "week" }).state;
-  assert.equal(state.clock.ordinal, 8);
+  state = apply(state, { type: "take_turn", idempotencyKey: "week" }).state;
+  assert.equal(state.clock.turn, 2);
   assert.equal(state.finance.cashGp, 550);
-  const again = apply(state, { type: "advance_days", days: 7, idempotencyKey: "week" });
+  const again = apply(state, { type: "take_turn", idempotencyKey: "week" });
   assert.equal(again.replay, true);
   assert.equal(again.state.finance.cashGp, 550);
-  assert.equal(again.state.clock.ordinal, 8);
+  assert.equal(again.state.clock.turn, 2);
 });
 
-test("construction cost, time, and free inherited rooms", () => {
+test("construction cost is charged and the finish turn is not invented", () => {
   let state = withCash(party(), 500);
   const built = apply(state, { type: "add_basic", unitId: "unit-party", roomId: "parlor", space: "cramped" });
   assert.equal(built.state.finance.cashGp, 0);
-  assert.equal(built.state.projects[0].days, 20);
-  assert.equal(built.result.dueOrdinal, 21);
-  state = built.state;
-  state = apply(state, { type: "advance_days", days: 20 }).state;
+  assert.equal(built.state.projects[0].dueTurn, null);
+  assert.equal(built.state.projects[0].unscheduled, true);
+  state = apply(built.state, { type: "take_turn" }).state;
+  assert.equal(state.facilities.some((item) => item.name === "Parlor"), false);
+  state = apply(state, { type: "finish_project", projectId: state.projects[0].id }).state;
   assert.equal(state.facilities.some((item) => item.name === "Parlor" && item.acquired === "built"), true);
   const free = apply(party(), { type: "add_basic", unitId: "unit-party", roomId: "bedroom", space: "cramped", inherited: true }).state;
   assert.equal(free.finance.cashKnown, false);
@@ -202,7 +203,7 @@ test("attack, walls, armory, and next-turn shutdown", () => {
   const shut = resolved.facilities.find((item) => item.status === "shutdown");
   assert.ok(shut);
   assert.equal(shut.shutdownUntilTurnId, "next");
-  const stillShut = apply(resolved, { type: "advance_days", days: 7 }).state;
+  const stillShut = apply(resolved, { type: "take_turn" }).state;
   assert.equal(stillShut.facilities.find((item) => item.id === shut.id).status, "shutdown");
   assert.throws(() => apply(stillShut, {
     type: "commit_turn",
@@ -265,12 +266,13 @@ test("review import does not finish historic turns or invent balances", () => {
   assert.equal(withRoster.revision, state.revision + 3);
 });
 
-test("a fresh estate uses a 10-day turn", () => {
+test("a fresh estate leaves the Bastion turn unknown", () => {
   const state = emptyEstate({ name: "Unnamed bastion" });
-  assert.equal(state.clock.cadenceDays, 10);
-  assert.equal(state.clock.ordinal, null);
+  assert.equal(state.clock.turn, null);
+  assert.equal(state.clock.anchor, null);
   const html = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
-  assert.match(html, /In-game day unknown · turn every 10 in-game days/);
+  assert.match(html, /Bastion turn unknown/);
+  assert.doesNotMatch(html, /in-game day/i);
 });
 
 test("setting a level directly does not grant replacements", () => {
@@ -297,9 +299,8 @@ test("settings save is one change and keeps the previous record when refused", (
     name: "Practice Hall",
     owner: "The company",
     unitId: "unit-party",
-    cadenceDays: 10,
-    label: "A spring day",
-    ordinal: 4,
+    label: "A practice session",
+    turn: 4,
     level: 8,
     grantReplacements: false,
     capabilities: ["arcane_or_tool"],
@@ -309,19 +310,18 @@ test("settings save is one change and keeps the previous record when refused", (
   assert.equal(saved.units[0].owner, "The company");
   assert.equal(saved.units[0].level, 8);
   assert.equal(saved.units[0].replacementBank, 0);
-  assert.equal(saved.clock.cadenceDays, 10);
-  assert.equal(saved.clock.ordinal, 4);
+  assert.equal(saved.clock.turn, 4);
+  assert.equal(saved.clock.turnNeedsCheck, false);
   assert.deepEqual(saved.units[0].capabilities, ["arcane_or_tool"]);
   assert.throws(() => apply(saved, {
     type: "save_settings",
     name: "Renamed Hall",
     unitId: "unit-party",
     level: 1,
-    cadenceDays: 12,
   }), (error) => error.code === "cap");
   assert.equal(saved.name, "Practice Hall");
   assert.equal(saved.units[0].level, 8);
-  assert.equal(saved.clock.cadenceDays, 10);
+  assert.equal(saved.clock.turn, 4);
 });
 
 test("DM can record defenders, loans, committed goods, and an order already running", () => {
@@ -347,19 +347,15 @@ test("DM can record defenders, loans, committed goods, and an order already runn
   assert.equal(state.goods[0].reservedGp, 500);
   assert.equal(state.finance.cashGp, cash);
   assert.equal(state.tasks.length, 0);
-  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedDay: 1, note: "Already listed" }).state;
+  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 1, note: "Already listed" }).state;
   assert.equal(state.orders[0].status, "in_progress");
-  assert.equal(state.orders[0].startedDay, 1);
-  assert.equal(state.orders[0].startedTurn, undefined);
-  const fromOld = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 1, note: "Old backup" }).state;
-  assert.equal(orderStartedDay(fromOld.orders.at(-1)), 1);
-  assert.equal(fromOld.orders.at(-1).startedTurn, undefined);
-  assert.throws(() => apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedDay: 9 }), (error) => error.code === "bad_day");
+  assert.equal(state.orders[0].startedTurn, 1);
+  assert.equal(orderStartedTurn(state.orders[0]), 1);
+  assert.throws(() => apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 9 }), (error) => error.code === "bad_turn");
   const listed = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: false, serviceRole: false });
-  assert.match(listed, /In-game day it started/);
+  assert.match(listed, /Bastion turn it started/);
   assert.match(listed, /value="1"/);
-  assert.match(listed, /started day 1/);
-  assert.doesNotMatch(listed, /Turn it started/);
+  assert.match(listed, /started turn 1/);
   assert.equal(state.tasks.length, 0);
   assert.equal(state.finance.cashKnown, false);
 });
@@ -392,10 +388,10 @@ test("settings and the DM record screen are reachable", () => {
   assert.match(settings, /<select id="level"/);
   assert.doesNotMatch(settings, /<input id="level"/);
   for (let level = 1; level <= 20; level += 1) assert.match(settings, new RegExp(`value="${level}"`));
-  assert.match(settings, /none of them change/);
-  assert.match(settings, /for="date-label">Date </);
-  assert.match(settings, /placeholder="Leave blank if the date is unknown"/);
-  assert.doesNotMatch(settings, /Calendar label/);
+  assert.match(settings, /Only the DM can save the turn counter/);
+  assert.match(settings, /for="session-label">Session date </);
+  assert.match(settings, /for="turn-number">Bastion turn /);
+  assert.match(settings, /In-game date anchor/);
   const record = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: true, serviceRole: false });
   assert.match(record, /Defenders already housed/);
   assert.match(record, /Outstanding loan/);
@@ -850,7 +846,8 @@ test("room and people screens keep DM corrections distinct from the published re
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/006_manage_rooms_people.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/007_bastion_turns.sql"), "utf8");
+  const rooms = await readFile(path.join(root, "supabase/migrations/006_manage_rooms_people.sql"), "utf8");
   const prior = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
   const cases = [...rules.matchAll(/case "([a-z_]+)":/g)].map((match) => match[1]);
   assert.equal(new Set(cases).size, cases.length);
@@ -870,9 +867,14 @@ test("the server handles every command the client can send", async () => {
   }
   for (const type of sent) assert.ok(server.includes(type), type);
   const updates = migration.match(/update\s+public\.estates/gi) || [];
-  assert.deepEqual(updates, ["update public.estates"]);
+  assert.ok(updates.includes("update public.estates"));
   assert.match(migration, /update public\.estates set document = doc, revision = rev where id = eid/);
-  assert.doesNotMatch(migration, /_bastion_move_started_turn/);
+  assert.match(migration, /public\._bastion_migrate_turns\(document\)/);
+  const migrate = migration.match(/function public\._bastion_migrate_turns[\s\S]*?\$\$;/);
+  assert.ok(migrate, "turn migration function is missing");
+  assert.doesNotMatch(migrate[0], /cashGp/);
+  const roomUpdates = rooms.match(/update\s+public\.estates/gi) || [];
+  assert.deepEqual(roomUpdates, ["update public.estates"]);
   const priorUpdates = prior.match(/update\s+public\.estates/gi) || [];
   assert.deepEqual(priorUpdates, ["update public.estates", "update public.estates"]);
   assert.match(prior, /update public\.estates\s+set document = public\._bastion_move_started_turn\(document\)\s+where document::text like '%startedTurn%'/);
@@ -915,9 +917,97 @@ test("practice sandbox renders and is labeled as not the group record", () => {
   assert.match(ready, /not a Microsoft/);
 });
 
+test("Harptos dates are derived from the turn and an anchor", () => {
+  const anchor = { turn: 1, month: "tarsakh", day: 10, festival: null, year: null };
+  assert.equal(dateForTurn(anchor, 1).text, "10 Tarsakh");
+  assert.equal(dateForTurn(anchor, 3).text, "24 Tarsakh");
+  assert.equal(dateForTurn(anchor, 4).text, "Greengrass");
+  assert.equal(dateForTurn(null, 3), null);
+  assert.equal(dateForTurn(anchor, null), null);
+  assert.equal(addCalendarDays({ festival: "midsummer", year: 1492 }, 1).festival, "shieldmeet");
+  assert.equal(addCalendarDays({ festival: "midsummer", year: 1491 }, 1).month, "eleasis");
+  assert.equal(dateForTurn({ turn: 1, month: "flamerule", day: 24, festival: null, year: 1492 }, 3).text, "6 Eleasis, 1492 DR");
+  assert.equal(dateForTurn({ turn: 1, month: "flamerule", day: 24, festival: null, year: 1491 }, 3).text, "7 Eleasis, 1491 DR");
+});
+
+test("a member can set the date and a reader cannot move the turn", () => {
+  let state = party();
+  state = apply(state, { type: "set_calendar_anchor", actorRole: "reader", actorEmail: "reader@example.com", turn: 1, month: "tarkesh", day: 10 }).state;
+  assert.equal(dateForTurn(state.clock.anchor, state.clock.turn).text, "10 Tarsakh");
+  assert.equal(state.clock.turn, 1);
+  assert.equal(state.audit.at(-1).actorRole, "reader");
+  assert.equal(state.audit.at(-1).actorEmail, "reader@example.com");
+  assert.equal(state.audit.at(-1).type, "set_calendar_anchor");
+  const readerTurn = render({ mode: "remote", role: "reader", view: "turn", state, error: "", notice: "", configured: true, serviceRole: false });
+  assert.match(readerTurn, /id="reanchor"/);
+  assert.match(readerTurn, /value="10"/);
+  assert.match(readerTurn, /value="tarsakh" selected/);
+  assert.doesNotMatch(readerTurn, /id="take-turn"/);
+  const outsider = render({ mode: "remote", role: "", view: "turn", state, error: "", notice: "", configured: true, serviceRole: false });
+  assert.doesNotMatch(outsider, /id="reanchor"/);
+  assert.throws(() => apply(state, { type: "take_turn", actorRole: "reader" }), (error) => error.code === "forbidden");
+  assert.throws(() => apply(state, { type: "set_calendar_anchor", actorRole: "stranger", turn: 1, month: "hammer", day: 1 }), (error) => error.code === "forbidden");
+  const moved = apply(state, {
+    type: "reanchor_calendar",
+    actorRole: "editor",
+    turn: 1,
+    month: "hammer",
+    day: 1,
+    reason: "The party lost time on the road.",
+  }).state;
+  assert.equal(dateForTurn(moved.clock.anchor, 1).text, "1 Hammer");
+  assert.match(moved.audit.at(-1).summary, /Re-anchored turn 1/);
+  const after = render({ mode: "sandbox", view: "turn", state: moved, turnGuide: { phase: "orders" }, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(after, /value="hammer" selected/);
+  assert.doesNotMatch(after, /id="take-turn"/);
+});
+
+test("ord-51 is not given turn 30, and a counter other than 3 is flagged", () => {
+  const converted = migrateTurns({
+    clock: { ordinal: 12, cadenceDays: 10, label: "Session" },
+    finance: { cashKnown: true, cashGp: 50 },
+    orders: [{ id: "ord-51", startedDay: 30, status: "in_progress" }],
+    tasks: [{ id: "task-1", dueOrdinal: 20, status: "open" }],
+  });
+  assert.equal(converted.clock.turn, 12);
+  assert.equal(converted.clock.turnNeedsCheck, true);
+  assert.equal(converted.clock.ordinal, undefined);
+  assert.equal(converted.orders[0].startedTurn, null);
+  assert.equal(converted.orders[0].startNeedsCheck, true);
+  assert.equal(converted.orders[0].previousStartNumber, 30);
+  assert.equal(converted.orders[0].startedDay, undefined);
+  assert.equal(converted.tasks[0].dueTurn, null);
+  assert.equal(converted.tasks[0].previousDue, 20);
+  assert.equal(converted.finance.cashGp, 50);
+  const confirmed = migrateTurns({ clock: { ordinal: 3, label: "" }, orders: [] });
+  assert.equal(confirmed.clock.turn, 3);
+  assert.equal(confirmed.clock.turnNeedsCheck, false);
+  const unknown = migrateTurns({ clock: { ordinal: null }, orders: [] });
+  assert.equal(unknown.clock.turn, null);
+  assert.equal(unknown.clock.turnNeedsCheck, true);
+  const twice = migrateTurns(converted);
+  assert.equal(twice.orders[0].previousStartNumber, 30);
+  twice.orders[0].startedTurn = 2;
+  twice.orders[0].startNeedsCheck = false;
+  const again = migrateTurns(twice);
+  assert.equal(again.orders[0].startedTurn, 2);
+});
+
+test("the tracker no longer labels game time in days", async () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const names = ["rules.js", "render.js", "main.js", "catalog.js", "demo.js"];
+  const banned = [/startedDay/, /cadenceDays/, /advance_days/, /dueOrdinal/, /in-game day/i, /Day number/, /\b\d+ days\b/, /\b\d+-day\b/];
+  for (const name of names) {
+    const text = await readFile(path.join(root, "js", name), "utf8");
+    for (const pattern of banned) assert.equal(pattern.test(text), false, `${name} matches ${pattern}`);
+  }
+  const readme = await readFile(path.join(root, "README.md"), "utf8");
+  assert.equal(/in-game day/i.test(readme), false);
+});
+
 test("public tracker files do not carry private campaign material", async () => {
   const root = path.resolve(import.meta.dirname, "..");
-  const banned = ["grim" + "wald", "duns" + "tan", "merrow" + "by", "tars" + "akh", "service" + "_role", "DMG_" + "Bastions", "an" + "vil", "notion" + ".so", "3c556933" + "c6ab"].map((word) => new RegExp(word, "i"));
+  const banned = ["grim" + "wald", "duns" + "tan", "merrow" + "by", "service" + "_role", "DMG_" + "Bastions", "an" + "vil", "notion" + ".so", "3c556933" + "c6ab"].map((word) => new RegExp(word, "i"));
   async function walk(dir) {
     const entries = await readdir(dir, { withFileTypes: true });
     const files = [];

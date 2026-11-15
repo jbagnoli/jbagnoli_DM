@@ -29,6 +29,8 @@ const model = {
   roomAction: null,
   projectId: "",
   role: "",
+  turnGuide: null,
+  lastResult: null,
 };
 
 function paint() {
@@ -100,10 +102,15 @@ async function commit(command, source) {
   await new Promise((resolve) => setTimeout(resolve, 0));
   try {
     let replay = false;
+    let outcome = null;
     if (model.mode === "sandbox") {
-      replay = Boolean(localApply(command).replay);
+      outcome = localApply(command);
+      replay = Boolean(outcome.replay);
+      model.lastResult = outcome.result;
     } else if (model.mode === "remote") {
-      replay = Boolean((await remoteApply(command))?.replay);
+      outcome = await remoteApply(command);
+      replay = Boolean(outcome?.replay);
+      model.lastResult = outcome;
     } else {
       throw new Error("Not connected. Setup is required.");
     }
@@ -255,6 +262,17 @@ app.addEventListener("click", async (event) => {
   }
   if (action === "cancel-project-close") {
     model.projectId = "";
+    paint();
+  }
+  if (action === "finish-project") {
+    await commit({ type: "finish_project", projectId: button.dataset.id });
+  }
+  if (action === "confirm-date") {
+    model.turnGuide = { ...(model.turnGuide || {}), phase: "orders" };
+    paint();
+  }
+  if (action === "show-date") {
+    model.turnGuide = { ...(model.turnGuide || {}), phase: "date" };
     paint();
   }
   if (action === "accept-review") {
@@ -429,9 +447,8 @@ app.addEventListener("submit", async (event) => {
         name: data.name,
         owner: data.owner,
         unitId: model.state.units[0].id,
-        cadenceDays: Number(data.cadenceDays),
         label: data.label,
-        ordinal: data.ordinal === "" ? null : Number(data.ordinal),
+        turn: data.turn === "" ? null : Number(data.turn),
         level: Number(data.level),
         grantReplacements: data.grantReplacements === "on",
         capabilities,
@@ -476,11 +493,30 @@ app.addEventListener("submit", async (event) => {
         type: "record_order",
         facilityId,
         suborder,
-        startedDay: data.startedDay === "" ? null : Number(data.startedDay),
+        startedTurn: data.startedTurn === "" ? null : Number(data.startedTurn),
         note: data.note,
       });
-    } else if (form.id === "advance") {
-      save({ type: "advance_days", days: Number(data.days) });
+    } else if (form.id === "take-turn") {
+      const ok = await save({ type: "take_turn" });
+      if (ok) {
+        model.turnGuide = { phase: "results", report: model.lastResult };
+        paint();
+      }
+    } else if (form.id === "anchor") {
+      save(anchorCommand("set_calendar_anchor", data));
+    } else if (form.id === "reanchor") {
+      const ok = await save(anchorCommand("reanchor_calendar", data));
+      if (ok) {
+        model.turnGuide = { ...(model.turnGuide || {}), phase: "orders" };
+        paint();
+      }
+    } else if (form.id.startsWith("order-start-")) {
+      save({
+        type: "set_order_start",
+        orderId: data.orderId,
+        startedTurn: data.startedTurn === "" ? null : Number(data.startedTurn),
+        unknown: data.unknown === "on",
+      });
     } else if (form.id === "split") {
       save({ type: "split_unit", name: data.name, level: Number(data.level), acknowledgeNewCap: data.acknowledge === "on" });
     } else if (form.id === "review") {
@@ -501,6 +537,20 @@ async function readRole() {
   } catch {
     return "";
   }
+}
+
+function anchorCommand(type, data) {
+  const raw = String(data.month || "");
+  const festival = raw.startsWith("festival:") ? raw.slice("festival:".length) : "";
+  return {
+    type,
+    turn: Number(data.turn),
+    month: festival ? "" : raw,
+    festival,
+    day: data.day === "" ? null : Number(data.day),
+    year: data.year === "" ? null : Number(data.year),
+    reason: data.reason,
+  };
 }
 
 function closeRoomCommand(type, data) {
