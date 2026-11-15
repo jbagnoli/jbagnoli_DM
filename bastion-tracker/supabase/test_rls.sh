@@ -32,6 +32,7 @@ psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migration
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/005_remove_person.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/006_manage_rooms_people.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/007_bastion_turns.sql
+psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f migrations/008_release_goods.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f rls_test.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f command_test.sql
 psql -h 127.0.0.1 -p "$PORT" -d bastion_rls_test -v ON_ERROR_STOP=1 -f goods_test.sql

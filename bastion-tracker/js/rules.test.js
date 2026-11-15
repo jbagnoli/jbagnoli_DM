@@ -9,6 +9,7 @@ import { canAccept, markAgainstRecord, parseReview } from "./review.js";
 import { beginSave, failSave, markSavingButtons, succeedSave } from "./save-feedback.js";
 import { render } from "./render.js";
 import { addCalendarDays, dateForTurn } from "./calendar.js";
+import { journalDateLabel, turnReports } from "./journal.js";
 import { migrateTurns } from "./migrate-turns.js";
 import { RuleError, apply, emptyEstate, orderStartedTurn } from "./rules.js";
 
@@ -347,16 +348,30 @@ test("DM can record defenders, loans, committed goods, and an order already runn
   assert.equal(state.goods[0].reservedGp, 500);
   assert.equal(state.finance.cashGp, cash);
   assert.equal(state.tasks.length, 0);
-  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 1, note: "Already listed" }).state;
+  state = apply(state, {
+    type: "record_order",
+    facilityId: store.id,
+    suborder: "sell",
+    startedTurn: 1,
+    note: "Already listed",
+    lotId: state.goods[0].id,
+    standardGp: 500,
+  }).state;
   assert.equal(state.orders[0].status, "in_progress");
   assert.equal(state.orders[0].startedTurn, 1);
   assert.equal(orderStartedTurn(state.orders[0]), 1);
+  assert.equal(state.goods[0].reservedGp, 500);
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].auto, "storehouse_sell");
+  assert.equal(state.tasks[0].lotId, state.goods[0].id);
+  assert.equal(state.tasks[0].proceeds, 550);
+  assert.equal(state.tasks[0].dueTurn, 2);
+  assert.equal(state.finance.cashGp, cash);
   assert.throws(() => apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", startedTurn: 9 }), (error) => error.code === "bad_turn");
   const listed = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: false, serviceRole: false });
   assert.match(listed, /Bastion turn it started/);
   assert.match(listed, /value="1"/);
   assert.match(listed, /started turn 1/);
-  assert.equal(state.tasks.length, 0);
   assert.equal(state.finance.cashKnown, false);
 });
 
@@ -846,7 +861,8 @@ test("room and people screens keep DM corrections distinct from the published re
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/007_bastion_turns.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/008_release_goods.sql"), "utf8");
+  const turns = await readFile(path.join(root, "supabase/migrations/007_bastion_turns.sql"), "utf8");
   const rooms = await readFile(path.join(root, "supabase/migrations/006_manage_rooms_people.sql"), "utf8");
   const prior = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
   const cases = [...rules.matchAll(/case "([a-z_]+)":/g)].map((match) => match[1]);
@@ -866,11 +882,12 @@ test("the server handles every command the client can send", async () => {
     sent.push(...[...source.matchAll(/type:\s*"([a-z_]+)"/g)].map((match) => match[1]));
   }
   for (const type of sent) assert.ok(server.includes(type), type);
-  const updates = migration.match(/update\s+public\.estates/gi) || [];
+  const updates = turns.match(/update\s+public\.estates/gi) || [];
   assert.ok(updates.includes("update public.estates"));
-  assert.match(migration, /update public\.estates set document = doc, revision = rev where id = eid/);
-  assert.match(migration, /public\._bastion_migrate_turns\(document\)/);
-  const migrate = migration.match(/function public\._bastion_migrate_turns[\s\S]*?\$\$;/);
+  assert.match(turns, /update public\.estates set document = doc, revision = rev where id = eid/);
+  assert.match(turns, /public\._bastion_migrate_turns\(document\)/);
+  assert.match(migration, /release_goods/);
+  const migrate = turns.match(/function public\._bastion_migrate_turns[\s\S]*?\$\$;/);
   assert.ok(migrate, "turn migration function is missing");
   assert.doesNotMatch(migrate[0], /cashGp/);
   const roomUpdates = rooms.match(/update\s+public\.estates/gi) || [];
@@ -991,6 +1008,109 @@ test("ord-51 is not given turn 30, and a counter other than 3 is flagged", () =>
   twice.orders[0].startNeedsCheck = false;
   const again = migrateTurns(twice);
   assert.equal(again.orders[0].startedTurn, 2);
+});
+
+test("the DM can release an orphaned reserve and cannot release an open sale", () => {
+  let state = withCash(party(), 400);
+  state = add(state, "storehouse");
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  state = apply(state, { type: "reserve_goods", name: "Herbs", standardGp: 500, note: "Held aside" }).state;
+  const cash = state.finance.cashGp;
+  assert.equal(state.tasks.length, 0);
+  assert.throws(() => apply(state, { type: "release_goods", actorRole: "editor", lotId: state.goods[0].id, standardGp: 100 }), (error) => error.code === "forbidden");
+  assert.throws(() => apply(state, { type: "release_goods", actorRole: "reader", lotId: state.goods[0].id }), (error) => error.code === "forbidden");
+  assert.throws(() => apply(state, { type: "release_goods", actorRole: "stranger", lotId: state.goods[0].id }), (error) => error.code === "forbidden");
+  state = apply(state, { type: "release_goods", lotId: state.goods[0].id, standardGp: 200 }).state;
+  assert.equal(state.goods[0].reservedGp, 300);
+  assert.equal(state.goods[0].commitment, "Held aside");
+  assert.equal(state.finance.cashGp, cash);
+  state = apply(state, { type: "release_goods", lotId: state.goods[0].id }).state;
+  assert.equal(state.goods[0].reservedGp, 0);
+  assert.equal(state.goods[0].commitment, "");
+  assert.equal(state.finance.cashGp, cash);
+  state = apply(state, { type: "reserve_goods", lotId: state.goods[0].id, standardGp: 500, note: "Held aside" }).state;
+  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", lotId: state.goods[0].id, standardGp: 200, startedTurn: 1 }).state;
+  assert.equal(state.goods[0].reservedGp, 500);
+  assert.equal(state.finance.cashGp, cash);
+  state = apply(state, { type: "release_goods", lotId: state.goods[0].id, standardGp: 300 }).state;
+  assert.equal(state.goods[0].reservedGp, 200);
+  assert.throws(() => apply(state, { type: "release_goods", lotId: state.goods[0].id, standardGp: 1 }), (error) => error.code === "goods_linked");
+  assert.equal(state.goods[0].reservedGp, 200);
+  assert.equal(state.finance.cashGp, cash);
+  const orphan = apply(withCash(party(), 400), { type: "reserve_goods", name: "Herbs", standardGp: 500 }).state;
+  const money = render({ mode: "sandbox", view: "money", state: orphan, error: "", notice: "", configured: false, serviceRole: false, releaseGoodsId: "", confirmGoodsId: "" });
+  assert.match(money, /free 0 GP/);
+  assert.match(money, /committed 500 GP with no open sale/);
+  assert.match(money, /data-action="confirm-release-goods"/);
+  const reader = render({ mode: "remote", role: "reader", view: "money", state: orphan, error: "", notice: "", configured: true, serviceRole: false });
+  assert.doesNotMatch(reader, /data-action="confirm-release-goods"/);
+});
+
+test("storehouse buy and sell name the goods instead of guessing a lot", () => {
+  let state = withCash(add(party(), "storehouse"), 800);
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  state = apply(state, { type: "record_goods", name: "Wool", standardGp: 200 }).state;
+  state = apply(state, { type: "record_goods", name: "Herbs", standardGp: 500 }).state;
+  const herbs = state.goods.find((item) => item.name === "Herbs");
+  const order = (extra) => ({ type: "commit_turn", unitId: "unit-party", presence: "present", mode: "orders", orders: [{ facilityId: store.id, ...extra }] });
+  assert.throws(() => apply(state, order({ suborder: "buy", standardGp: 100 })), (error) => error.code === "name_required");
+  assert.throws(() => apply(state, order({ suborder: "buy", goodsName: "Nails", standardGp: 501 })), (error) => error.code === "buy_limit");
+  const poor = apply(state, { type: "set_finance", cashGp: 100 }).state;
+  assert.throws(() => apply(poor, order({ suborder: "buy", goodsName: "Nails", standardGp: 200 })), (error) => error.code === "insufficient_cash");
+  const bought = apply(state, order({ suborder: "buy", goodsName: "Nails", standardGp: 100 })).state;
+  assert.equal(bought.finance.cashGp, 700);
+  assert.equal(bought.tasks[0].goodsName, "Nails");
+  assert.equal(bought.tasks[0].dueTurn, 2);
+  const sold = apply(state, order({ suborder: "sell", lotId: herbs.id, standardGp: 200 })).state;
+  assert.equal(sold.goods.find((item) => item.id === herbs.id).reservedGp, 200);
+  assert.equal(sold.goods.find((item) => item.name === "Wool").reservedGp, 0);
+  assert.equal(sold.finance.cashGp, 800);
+  assert.equal(sold.tasks[0].proceeds, saleProceeds(200, 5));
+  const page = render({ mode: "sandbox", view: "turn", state, turnGuide: { phase: "orders" }, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(page, /Lot to sell/);
+  assert.match(page, /Goods to buy/);
+  assert.doesNotMatch(page, /Record goods before selling/);
+});
+
+test("the journal groups turns and leaves the date unset until an anchor exists", () => {
+  let state = withCash(add(party(), "barrack"), 100);
+  const barrack = state.facilities.find((item) => item.catalogId === "barrack");
+  state = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [{ facilityId: barrack.id, suborder: "recruit", count: 2 }],
+  }).state;
+  const defender = state.roster.find((person) => person.category === "defender");
+  state = apply(state, { type: "roster_save", person: { ...defender, name: "Pell Ash" } }).state;
+  assert.equal(journalDateLabel(state, 1), "date not set");
+  let reports = turnReports(state);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].turn, 1);
+  assert.equal(reports[0].date, "date not set");
+  assert.match(reports[0].brief, /took on 2 new defenders/);
+  assert.doesNotMatch(reports[0].brief, /Pell Ash/);
+  assert.match(reports[0].footnote, /Pell Ash/);
+  state = apply(state, { type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: 1495 }).state;
+  assert.equal(journalDateLabel(state, 1), "10 Tarsakh, 1495 DR");
+  state = apply(state, { type: "take_turn" }).state;
+  state = apply(state, { type: "commit_turn", unitId: "unit-party", presence: "present", mode: "no_orders" }).state;
+  reports = turnReports(state);
+  assert.deepEqual(reports.map((report) => report.turn), [1, 2]);
+  assert.equal(reports[1].date, "17 Tarsakh, 1495 DR");
+  assert.match(reports[1].brief, /no orders were issued/);
+  const closed = render({ mode: "remote", role: "reader", view: "journal", state, journalTurn: "", error: "", notice: "", configured: true, serviceRole: false });
+  assert.match(closed, /aria-expanded="false"/);
+  assert.match(closed, /Turn: 1/);
+  assert.match(closed, /Date: 10 Tarsakh, 1495 DR/);
+  assert.match(closed, /hidden/);
+  const open = render({ mode: "remote", role: "reader", view: "journal", state, journalTurn: 1, error: "", notice: "", configured: true, serviceRole: false });
+  assert.match(open, /aria-expanded="true"/);
+  assert.match(open, /took on 2 new defenders/);
+  const backup = render({ mode: "sandbox", view: "backup", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(backup, /Download JSON backup/);
+  assert.match(backup, /Backup</);
 });
 
 test("the tracker no longer labels game time in days", async () => {

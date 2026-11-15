@@ -45,6 +45,7 @@ export const SECTION_MARK = {
   more: "pips",
   money: "coin",
   journal: "thread",
+  backup: "seal",
   settings: "key",
   import: "card",
   help: "star",

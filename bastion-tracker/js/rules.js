@@ -41,6 +41,7 @@ const DM_ONLY = new Set([
   "record_defenders",
   "set_loan",
   "reserve_goods",
+  "release_goods",
   "record_order",
   "remove_goods",
   "remove_person",
@@ -343,6 +344,8 @@ export function apply(input, command) {
       return setLoan(state, command);
     case "reserve_goods":
       return reserveGoods(state, command);
+    case "release_goods":
+      return releaseGoods(state, command);
     case "record_order":
       return recordOrder(state, command);
     case "remove_goods":
@@ -1393,6 +1396,37 @@ function goodsHeld(state, lot) {
   return openOrder || openTask;
 }
 
+export function openSaleCover(state, lotId) {
+  return (state.tasks || [])
+    .filter((task) => task.lotId === lotId && task.auto === "storehouse_sell" && task.status === "open" && !task.settled)
+    .reduce((sum, task) => sum + (Number(task.standardGp) || 0), 0);
+}
+
+function releaseGoods(state, command) {
+  const lot = state.goods.find((item) => item.id === command.lotId && item.status === "on_hand");
+  if (!lot) throw new RuleError("missing_goods", "Those goods are not on hand.");
+  const reserved = lot.reservedGp || 0;
+  const covered = openSaleCover(state, lot.id);
+  const releasable = reserved - covered;
+  if (releasable <= 0) {
+    throw new RuleError("goods_linked", "Those goods are tied to an open Storehouse sale. That sale was not cancelled, and cash was not changed.");
+  }
+  const requested = command.standardGp == null || command.standardGp === "" ? releasable : goodsPrice(command.standardGp);
+  if (requested > releasable) {
+    throw new RuleError("goods_linked", "That would release goods tied to an open Storehouse sale. Cash was not changed.");
+  }
+  const cashGp = state.finance.cashGp;
+  const cashKnown = state.finance.cashKnown;
+  lot.reservedGp = reserved - requested;
+  if (lot.reservedGp <= 0) {
+    lot.reservedGp = 0;
+    lot.commitment = "";
+  }
+  state.finance.cashGp = cashGp;
+  state.finance.cashKnown = cashKnown;
+  return finish(state, command, { lotId: lot.id, reservedGp: lot.reservedGp, releasedGp: requested }, `Released ${requested} GP of ${lot.name || "unnamed goods"}. Cash was not changed.`);
+}
+
 function removeGoods(state, command) {
   const lot = state.goods.find((item) => item.id === command.lotId);
   if (!lot) throw new RuleError("missing_goods", "Those goods are not on the record.");
@@ -1436,10 +1470,50 @@ function recordOrder(state, command) {
   order.startedTurn = started;
   order.startNeedsCheck = false;
   order.note = note;
-  order.auto = null;
+  order.auto = sub.auto === "storehouse_sell" ? "storehouse_sell" : null;
   order.recorded = true;
   facility.currentOrderId = order.id;
+  if (sub.auto === "storehouse_sell") {
+    return linkRecordedSale(state, command, facility, order, note);
+  }
   return finish(state, command, { orderId: order.id, startedTurn: started }, `Marked ${facility.name} as already running ${sub.label}. No turn was resolved and no money moved.`);
+}
+
+function linkRecordedSale(state, command, facility, order, note) {
+  if (order.taskId && (state.tasks || []).some((task) => task.id === order.taskId && task.status === "open" && !task.settled)) {
+    throw new RuleError("goods_linked", "That sale is already recorded. Cash was not changed.");
+  }
+  requireTurn(state);
+  const lot = state.goods.find((item) => item.id === command.lotId && item.status === "on_hand");
+  if (!lot) throw new RuleError("missing_goods", "Choose goods that are still on hand.");
+  const amount = goodsPrice(command.standardGp);
+  const unit = unitById(state, facility.unitId);
+  const reserved = lot.reservedGp || 0;
+  const covered = openSaleCover(state, lot.id);
+  const free = lot.standardGp - reserved;
+  const uncovered = Math.max(0, reserved - covered);
+  if (amount > uncovered + free) throw new RuleError("bad_amount", "Sell a list-price amount that is still free.");
+  const cashGp = state.finance.cashGp;
+  const cashKnown = state.finance.cashKnown;
+  lot.reservedGp = reserved + Math.max(0, amount - uncovered);
+  const task = openTask(state, {
+    auto: "storehouse_sell",
+    unitId: facility.unitId,
+    orderId: order.id,
+    lotId: lot.id,
+    standardGp: amount,
+    proceeds: saleProceeds(amount, unit.level),
+    dueTurn: dueAfter(state, 1),
+    note,
+    recorded: true,
+  });
+  order.taskId = task.id;
+  order.lotId = lot.id;
+  order.dueTurn = task.dueTurn;
+  order.auto = "storehouse_sell";
+  state.finance.cashGp = cashGp;
+  state.finance.cashKnown = cashKnown;
+  return finish(state, command, { orderId: order.id, taskId: task.id, lotId: lot.id, proceeds: task.proceeds, dueTurn: task.dueTurn }, `Recorded a Storehouse sale of ${amount} GP of ${lot.name} already underway. Cash was not changed. It pays on the next Bastion turn.`);
 }
 
 function recordGoods(state, command) {
@@ -1577,12 +1651,13 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
     if (!Number.isInteger(standardGp) || standardGp < 1 || standardGp > limit) {
       throw new RuleError("buy_limit", `This level can buy up to ${limit} GP of goods in one order.`);
     }
+    const goodsName = goodsLabel(request.goodsName);
     spend(state, standardGp, `Storehouse purchase of ${standardGp} GP`, command);
     const task = openTask(state, {
       auto: "storehouse_buy",
       unitId: unit.id,
       orderId: order.id,
-      goodsName: request.goodsName == null ? "Goods" : goodsLabel(request.goodsName),
+      goodsName,
       standardGp,
       dueTurn: dueAfter(state, 1),
     });
