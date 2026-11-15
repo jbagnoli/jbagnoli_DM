@@ -1,6 +1,6 @@
 # Bastion Tracker design requirements
 
-This is the design of the Bastion Tracker as it stands after the work through migration 008, plus the decisions that are agreed and not built yet. It is written for the DM. It describes behavior, not a recipe for changing the database.
+This is the design of the Bastion Tracker as it stands after the work through migration 009. It is written for the DM. It describes behavior, not a recipe for changing the database. Decisions are also kept as short records in `doc/adr/`. A later design change adds another one of those records.
 
 **Implemented** means the tracker already does this. **Planned** means John has agreed it, and it is not built yet.
 
@@ -34,9 +34,15 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** Bastion turns are the only game-time counter. Stored fields, the screen, order lengths, finish times, and the journal all use turns. A real-world session note, the in-game date, and the estate’s save number are three different things. The save number only exists so two people do not overwrite each other.
 
-**Implemented.** The in-game date is derived from an anchor, for example “turn 1 is 10 Tarsakh.” Turn N is that anchor plus seven days for each turn after the anchor turn. The calendar is the Calendar of Harptos: twelve months of thirty days, and the festivals that sit between months. A leap year can include Shieldmeet. If the year is blank, Shieldmeet is not inserted, and the screen says so when a span crosses Midsummer. “Tarkesh” is accepted as Tarsakh. If no anchor is set, no date is shown.
+**Implemented.** The in-game date is derived from an anchor, for example “turn 1 is 10 Tarsakh.” Each later turn adds the chosen turn length. The default is a ten-day tenday, and festival days are skipped so they do not use up one of those days. Settings can switch to the shorter chapter length, and can count festival days instead of skipping them. The calendar is the Calendar of Harptos: twelve months of thirty days, with the festivals that sit between months, including the Feast of the Moon, and Shieldmeet in a leap year. If the year is blank, Shieldmeet is not inserted, and the screen says so when a span crosses Midsummer. “Tarkesh” is accepted as Tarsakh. If no anchor is set, no date is shown. Changing the length does not move an anchor that is already saved.
 
 **Implemented.** Any signed-in member of the estate can set the anchor or re-anchor the current turn, including a reader. Anonymous visitors cannot. A signed-in user who is not a member of that estate cannot. A re-anchor replaces the anchor at the current turn and is written in the journal with who did it and why. It does not create a second counter, and it does not move the turn number.
+
+**Implemented.** Loans appear on the home page under What is due, with the lender and the amount still owed.
+
+**Implemented.** During a turn the DM can record a payment on each loan. One amount comes from the treasury and is deducted from tracked cash, refused if cash is unknown or too small. The other amount is personal treasure. It reduces the loan and is not tracked as cash. The loan cannot go below zero. The payment is journaled.
+
+**Implemented.** The turn form has a note of at most 600 characters. A longer note is refused on the page and in the saved command. Anyone who can take the turn can write it. The Journal shows it on that turn.
 
 **Implemented.** Taking a turn is one sequence:
 
@@ -47,9 +53,9 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** An order issued on turn N that takes one turn is due when the counter advances to N+1. A longer order is due on its own later turn. Work with no finish turn is skipped until someone marks it finished.
 
-**Planned.** Turn length should be chosen in setup. The default for this campaign is a ten-day tenday, the Faerûn rhythm. The seven-day length from the bastions chapter stays available as an option. Setup should also say whether festival days, such as Greengrass, are counted in that length or skipped. Today every turn is seven calendar days, and festival days are part of that count. There is no tenday setting and no switch for skipping festivals.
+**Implemented.** Setup offers the tenday or the shorter chapter length, and whether festival days are counted or skipped. A new estate, and the first run of migration 009, use the tenday and skip festivals. The saved anchor is not moved.
 
-**Planned. Must fix.** Each time the turn moves forward, the session label should become that new turn’s in-game date. Today the session label is a separate note. Advancing the turn does not change it, so it can stay on an old value.
+**Implemented.** Each time the turn moves forward, and whenever the date anchor is set or re-anchored, the session label becomes that turn’s in-game date. It no longer stays on an old note.
 
 **Implemented.** Build times and wall times that are not a whole number of Bastion turns are paid for and left unscheduled. They are not rounded. A cramped, roomy, or vast basic room, an upgrade from one size to the next, and a wall square are in this group. Someone marks them finished when the work is done.
 
@@ -64,21 +70,19 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 - Buy asks for a goods name and a list price. The price cannot pass the level’s limit: 500 GP before level 9, 2,000 GP from level 9, and 5,000 GP from level 13. The price is charged when the order is saved. It is refused if cash is still unknown or is too small. The goods arrive on the next turn.
 - Sell asks for a lot and a list-price amount that is still free. The payout uses the level markup automatically, and that automation stays. The markup is 10 percent before level 9, 20 percent from level 9, 50 percent from level 13, and 100 percent from level 17. At level 5, 500 GP of goods pays 550 GP. The money arrives on the next turn. John wants this markup to remain automatic.
 
-**Planned.** The “How many” field appears only on Barrack Recruit. It should not sit on every facility. The Storehouse card should show only the fields for the order that was chosen: the sell fields for Sell, and the buy fields for Buy. Today those extra fields are all visible together, and “How many” is on every order card.
+**Implemented.** “How many” appears only when Barrack Recruit is the chosen order. The Storehouse card shows the sell fields only for Sell, and the buy fields only for Buy. The level markup on a sale stays automatic.
 
 **Implemented.** Record existing state can enter defenders already housed, loans, goods already on hand, and an order already underway. Recording goods does not charge anyone. Marking goods committed only reserves them. It is not a completed sale and it does not pay anyone. A note that an order is already underway does not resolve that order when turns advance. The exception is a Storehouse sale already underway: it is tied to a chosen lot and pays once on the next turn, without paying at the moment it is recorded.
 
 **Implemented.** The DM can release reserved goods. The screen asks for the amount. The change is journaled with who did it, and cash does not move. Release is refused while that amount is tied to an open Storehouse sale. The sale is not cancelled.
 
-**Planned.** An order recorded as already underway has no Mark done and no Cancel. That is a gap. A recorded Storehouse sale is the exception already built: it pays on the next turn. Other recorded orders just sit there.
+**Implemented.** The DM can mark a recorded order done, or cancel it. Neither action moves cash. Cancelling or marking done a linked Storehouse sale closes that sale so it will not pay later, and it releases the goods reservation so the lot is not stuck. The change is journaled.
 
 ## People
 
-**Planned.** This is how the tracker should treat people. It is not built yet, and it does not need a paragraph of explanation on the screen.
+**Implemented.** Defenders are a count on each Barrack. Recruiting adds to that count. It does not create a named person. “Defenders already housed” sets the count. A generic name of the form Defender plus a number, or a blank name, is folded into that count by migration 009. A defender the DM named or edited by hand stays on the people list. The count still includes them, so the total does not change. Basic rooms keep the manual add-someone action, and that is also how a particular defender is named. The screen does not explain this rule.
 
-Defenders are not given individual names or separate people entries by default. They are a count on each Barrack, so a large bastion does not create dozens of people. Only the hirelings of a special facility get people entries, and only as many as that facility’s description calls for. Basic rooms have no such rule, so they keep the existing way of adding someone by hand. If the DM wants to name one particular defender, that uses the same add-someone action. It is not automatic.
-
-**Implemented today, and due to change when the rule above is built.** Recruiting and “defenders already housed” currently create one roster entry per defender, with a generated name if none was typed. Hirelings are also roster entries. The DM can add, rename, replace, or remove a person by hand, with the limits already described under corrections.
+**Implemented.** The People tab is one line per person: the name and tags on the left, the role or short description on the right, and the action buttons at the far right. On a phone the line stacks. The buttons stay real buttons.
 
 ## Journal and Backup
 
@@ -91,13 +95,7 @@ Defenders are not given individual names or separate people entries by default. 
 
 Opening the button shows a short report in a steward’s voice. The report uses only what was recorded for that turn: orders, results, money, goods, and the people or rooms that changed with it. It does not invent campaign facts. Renames and other corrections are a short footnote, not the report itself.
 
-**Planned.** The newest turn card should be open when the page is opened. Today every card starts closed.
-
-**Planned.** The report should say whether the owner was present, and how orders were sent when the owner was away, including a message spell if that was how word arrived. Presence is already stored with the turn. The report does not say it yet.
-
-**Planned.** A turn that only records setup or a correction should still get its own card. Today a card is created from a turn that was taken or from work that came due. A correction by itself does not open a new card. It can only appear as a footnote on a turn that already has one.
-
-**Planned.** When orders are saved, the backup line should name those orders. Today it says that orders were committed, and the detail lives on the turn, not in that one line.
+**Implemented.** The newest turn card is open when the Journal is opened. The report says whether the owner was here, away with no message, or away and how word was sent. A turn that only recorded setup or a correction, such as goods, defenders, or an order already underway, has its own card. When orders are saved, the backup line names them. The turn note is part of that turn’s report.
 
 ## Out of scope / manual
 
@@ -116,4 +114,4 @@ These are not automated, on purpose. The DM or the player enters them, or leaves
 
 **14 November 2026.** Any signed-in member of the estate can set or change the in-game date, not only the DM. The DM can release goods that were reserved without an open sale. Journal and Backup are separate pages, and the journal is a steward’s report of recorded turns.
 
-**15 November 2026.** Still to build: a turn-length setting, with a ten-day tenday as the default for this campaign and the seven-day chapter length as the other option, including whether festival days count; the session label updating to each new turn’s in-game date; the “How many” field only on Barrack Recruit, and Storehouse fields only for the chosen order; defenders as a count rather than a person each, with hireling entries limited to the facility description; Journal opening on the newest turn, naming presence and how orders were sent, giving setup-only turns a card, and naming the orders in the backup line.
+**15 November 2026.** Built: the tenday setting and festival-day choice; the session label following each turn’s date; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab; and the Journal details above. The decision records for these are in `doc/adr/`.

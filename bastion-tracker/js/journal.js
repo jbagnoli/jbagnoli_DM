@@ -83,16 +83,30 @@ function eventClause(state, event) {
 
 export function journalDateLabel(state, turn) {
   if (turn == null) return "date not set";
-  const shown = dateForTurn(state.clock?.anchor, turn);
+  const shown = dateForTurn(state.clock?.anchor, turn, state.clock || {});
   return shown?.text || "date not set";
 }
 
-function footnoteFor(state, turn) {
-  const notes = (state.audit || [])
+function presenceClause(record) {
+  if (record.presence === "present") return "the owner was here";
+  if (record.presence === "absent_with_contact") {
+    const how = String(record.contact || "").trim();
+    return how ? `the owner was away and sent word by ${how}` : "the owner was away but able to send word";
+  }
+  if (record.presence === "absent") return "the owner was away, and no message arrived";
+  return "";
+}
+
+function correctionLines(state, turn) {
+  return (state.audit || [])
     .filter((entry) => entry.turn === turn && CORRECTIONS.has(entry.type) && entry.summary)
     .map((entry) => entry.summary.trim())
     .filter(Boolean);
-  if (!notes.length) return "";
+}
+
+function footnoteFor(state, turn, usedInBrief) {
+  const notes = correctionLines(state, turn);
+  if (!notes.length || usedInBrief) return "";
   const shown = notes.slice(0, 2).join(" ");
   const more = notes.length > 2 ? ` ${notes.length - 2} more correction${notes.length - 2 === 1 ? "" : "s"} kept in the backup.` : "";
   return `Also noted on the record: ${shown}${more}`;
@@ -100,8 +114,12 @@ function footnoteFor(state, turn) {
 
 function briefFor(state, turn) {
   const clauses = [];
+  const noteLines = [];
   for (const record of state.turns || []) {
     if (record.turn !== turn) continue;
+    const presence = presenceClause(record);
+    if (presence) clauses.push(presence);
+    if (record.notes) noteLines.push(record.notes);
     if (record.mode === "maintain") {
       const event = (state.events || []).find((item) => item.id === record.eventId);
       clauses.push(eventClause(state, event));
@@ -118,9 +136,11 @@ function briefFor(state, turn) {
     const line = outcomeClause(state, task);
     if (line) clauses.push(line);
   }
-  if (!clauses.length) return "In the turn just past, my lord, nothing new was entered on the record.";
-  const body = clauses.join("; ");
-  return `In the turn just past, my lord, ${body}.`;
+  const corrections = correctionLines(state, turn);
+  const onlyCorrections = !clauses.length && corrections.length;
+  if (onlyCorrections) clauses.push(`the record was set in order. ${corrections.join(" ")}`);
+  if (!clauses.length) return { text: "In the turn just past, my lord, nothing new was entered on the record.", usedCorrections: false, notes: noteLines.join("\n") };
+  return { text: `In the turn just past, my lord, ${clauses.join("; ")}.`, usedCorrections: onlyCorrections, notes: noteLines.join("\n") };
 }
 
 export function turnReports(state) {
@@ -131,10 +151,17 @@ export function turnReports(state) {
   for (const task of state.tasks || []) {
     if (task.dueTurn != null && (task.settled || task.status === "ready" || task.status === "resolved")) numbers.add(task.dueTurn);
   }
-  return [...numbers].sort((left, right) => left - right).map((turn) => ({
-    turn,
-    date: journalDateLabel(state, turn),
-    brief: briefFor(state, turn),
-    footnote: footnoteFor(state, turn),
-  }));
+  for (const entry of state.audit || []) {
+    if (entry.turn != null && CORRECTIONS.has(entry.type)) numbers.add(entry.turn);
+  }
+  return [...numbers].sort((left, right) => left - right).map((turn) => {
+    const brief = briefFor(state, turn);
+    return {
+      turn,
+      date: journalDateLabel(state, turn),
+      brief: brief.text,
+      notes: brief.notes,
+      footnote: footnoteFor(state, turn, brief.usedCorrections),
+    };
+  });
 }

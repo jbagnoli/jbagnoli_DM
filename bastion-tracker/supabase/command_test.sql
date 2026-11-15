@@ -231,7 +231,7 @@ begin
   ));
   rev := (out->>'revision')::bigint;
   doc := out->'document';
-  if (select count(*) from jsonb_array_elements(doc->'roster') elem where elem->>'category' = 'defender' and elem->>'status' = 'active') <> 2 then
+  if coalesce((select (elem->>'defenderCount')::int from jsonb_array_elements(doc->'facilities') elem where elem->>'id' = barrack_id), 0) <> 2 then
     perform public._cmd_fail('defender count');
   end if;
   if jsonb_array_length(doc->'turns') <> (select jsonb_array_length(document->'turns') from public.estates where false) then

@@ -53,6 +53,8 @@ const DM_ONLY = new Set([
   "assign_person",
   "cancel_project",
   "set_order_start",
+  "close_recorded_order",
+  "repay_loans",
 ]);
 
 export function emptyEstate(options = {}) {
@@ -65,6 +67,8 @@ export function emptyEstate(options = {}) {
       label: options.sessionLabel || options.dateLabel || "",
       turn: options.turn ?? null,
       turnNeedsCheck: false,
+      turnDays: 10,
+      skipFestivals: true,
       anchor: null,
     },
     finance: {
@@ -176,6 +180,25 @@ function defendersOf(state, facilityId) {
   return state.roster.filter((person) => person.category === "defender" && person.status === "active" && person.facilityId === facilityId);
 }
 
+function housedDefenders(facility, state) {
+  if (facility && facility.defenderCount != null) return facility.defenderCount;
+  return defendersOf(state, facility.id).length;
+}
+
+function unitDefenderCount(state, unitId) {
+  const barracks = state.facilities.filter((item) => item.unitId === unitId && item.catalogId === "barrack" && item.status !== "archived");
+  if (barracks.some((item) => item.defenderCount != null)) {
+    return barracks.reduce((sum, item) => sum + (item.defenderCount || 0), 0);
+  }
+  return state.roster.filter((person) => person.unitId === unitId && person.category === "defender" && person.status === "active").length;
+}
+
+function syncSessionLabel(state) {
+  if (state.clock.turn == null) return;
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
+  if (shown?.text) state.clock.label = shown.text;
+}
+
 function housedLieutenants(state, unitId) {
   return state.roster.filter((person) => person.category === "lieutenant" && person.status === "active" && person.unitId === unitId && person.housed).length;
 }
@@ -239,6 +262,7 @@ function addSpecial(state, command) {
     blockedOnTurnId: null,
     plots: 1,
     vastCapacityLarge: spec.id === "stable" ? 3 : null,
+    defenderCount: spec.id === "barrack" ? 0 : null,
   };
   state.facilities.push(facility);
   return facility;
@@ -314,6 +338,10 @@ export function apply(input, command) {
       return reanchorCalendar(state, command);
     case "set_order_start":
       return setOrderStart(state, command);
+    case "close_recorded_order":
+      return closeRecordedOrder(state, command);
+    case "repay_loans":
+      return repayLoans(state, command);
     case "finish_project":
       return finishProject(state, command);
     case "set_due_turn":
@@ -383,13 +411,24 @@ function setSettings(state, command) {
   return finish(state, command, { turn: state.clock.turn }, "Updated estate settings.");
 }
 
+function applyCalendarSettings(state, command) {
+  if (command.turnDays != null && command.turnDays !== "") {
+    const days = Number(command.turnDays);
+    if (days !== 7 && days !== 10) throw new RuleError("bad_turn", "Choose the tenday length or the shorter chapter length.");
+    state.clock.turnDays = days;
+  }
+  if (command.skipFestivals === true || command.skipFestivals === false) state.clock.skipFestivals = command.skipFestivals;
+  syncSessionLabel(state);
+}
+
 function setClock(state, command) {
   if (command.label != null) state.clock.label = String(command.label).slice(0, 120);
   if (Object.prototype.hasOwnProperty.call(command, "turn")) {
     state.clock.turn = readTurn(command.turn, true);
     state.clock.turnNeedsCheck = false;
   }
-  return finish(state, command, { clock: { turn: state.clock.turn, label: state.clock.label } }, "Updated the Bastion turn and the session date.");
+  applyCalendarSettings(state, command);
+  return finish(state, command, { clock: { turn: state.clock.turn, label: state.clock.label, turnDays: state.clock.turnDays, skipFestivals: state.clock.skipFestivals } }, "Updated the Bastion turn and the session date.");
 }
 
 function setFinance(state, command) {
@@ -471,6 +510,7 @@ function saveSettings(state, command) {
     state.clock.turn = readTurn(command.turn, true);
     state.clock.turnNeedsCheck = false;
   }
+  applyCalendarSettings(state, command);
   let levelNote = "Level unchanged. No replacement was added.";
   if (command.level != null && command.level !== "") {
     const outcome = applyDirectLevel(state, unit, command.level, command.grantReplacements === true);
@@ -565,13 +605,14 @@ function facilityWork(state, facilityId) {
 
 function prepareFacilityClosure(state, facility, command) {
   const people = activeAt(state, facility.id);
-  const defenders = people.filter((person) => person.category === "defender");
+  const namedDefenders = people.filter((person) => person.category === "defender");
+  const defenders = facility.defenderCount != null ? facility.defenderCount : namedDefenders.length;
   const lieutenants = people.filter((person) => person.category === "lieutenant");
   const hirelings = people.filter((person) => person.category === "hireling");
   const others = people.filter((person) => !["defender", "lieutenant", "hireling"].includes(person.category));
-  if (defenders.length) {
-    const word = defenders.length === 1 ? "defender" : "defenders";
-    throw new RuleError("facility_held", `${facility.name} still houses ${defenders.length} ${word}. Change the defender count before removing or replacing this room. Nobody was deleted, and cash was not changed.`);
+  if (defenders) {
+    const word = defenders === 1 ? "defender" : "defenders";
+    throw new RuleError("facility_held", `${facility.name} still houses ${defenders} ${word}. Change the defender count before removing or replacing this room. Nobody was deleted, and cash was not changed.`);
   }
   if (lieutenants.length) {
     const word = lieutenants.length === 1 ? "lieutenant" : "lieutenants";
@@ -702,6 +743,7 @@ function replaceSpecial(state, command) {
     blockedOnTurnId: null,
     plots: 1,
     vastCapacityLarge: spec.id === "stable" ? 3 : null,
+    defenderCount: spec.id === "barrack" ? 0 : null,
   };
   state.facilities.push(facility);
   const lead = command.type === "correct_special"
@@ -936,7 +978,8 @@ function takeTurn(state, command) {
   requireTurn(state);
   state.clock.turn += 1;
   const settled = settleDue(state, command);
-  const shown = dateForTurn(state.clock.anchor, state.clock.turn);
+  syncSessionLabel(state);
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
   const dateText = shown?.text || "";
   const summary = dateText
     ? `Advanced to Bastion turn ${state.clock.turn}. The in-game date is ${dateText}.`
@@ -948,7 +991,8 @@ function applyAnchor(state, command, summary) {
   const parsed = normalizeAnchor(command);
   if (parsed.error) throw new RuleError("bad_date", parsed.error);
   state.clock.anchor = parsed.anchor;
-  const shown = dateForTurn(parsed.anchor, parsed.anchor.turn);
+  syncSessionLabel(state);
+  const shown = dateForTurn(parsed.anchor, parsed.anchor.turn, state.clock);
   return finish(state, command, { anchor: parsed.anchor, text: shown?.text || "" }, summary(parsed.anchor.turn, shown?.text || ""));
 }
 
@@ -982,6 +1026,56 @@ function setOrderStart(state, command) {
   order.startedTurn = started;
   order.startNeedsCheck = false;
   return finish(state, command, { orderId: order.id, startedTurn: started }, `Set the start of ${order.label || order.id} to Bastion turn ${started}.`);
+}
+
+function closeRecordedOrder(state, command) {
+  const order = (state.orders || []).find((item) => item.id === command.orderId);
+  if (!order || !order.recorded) throw new RuleError("missing_order", "That recorded order is not on the record.");
+  if (!["in_progress", "committed"].includes(order.status)) throw new RuleError("missing_order", "That order is already finished.");
+  const choice = command.choice === "cancel" ? "cancel" : "done";
+  const cashGp = state.finance.cashGp;
+  const cashKnown = state.finance.cashKnown;
+  for (const task of state.tasks || []) {
+    if (task.orderId !== order.id && task.id !== order.taskId) continue;
+    if (task.status !== "open" || task.settled) continue;
+    if (task.auto === "storehouse_sell" && task.lotId) {
+      const lot = state.goods.find((item) => item.id === task.lotId);
+      if (lot) lot.reservedGp = Math.max(0, (lot.reservedGp || 0) - (task.standardGp || 0));
+    }
+    task.status = "cancelled";
+    task.settled = true;
+  }
+  order.status = choice === "cancel" ? "cancelled" : "resolved";
+  state.finance.cashGp = cashGp;
+  state.finance.cashKnown = cashKnown;
+  const verb = choice === "cancel" ? "Cancelled" : "Marked done";
+  return finish(state, command, { orderId: order.id, status: order.status }, `${verb} the order already underway${order.label ? `: ${order.label}` : ""}. Cash was not changed.`);
+}
+
+function repayLoans(state, command) {
+  const payments = Array.isArray(command.payments) ? command.payments : [];
+  if (!payments.length) throw new RuleError("bad_amount", "Enter a payment for at least one loan.");
+  let treasuryTotal = 0;
+  const applied = [];
+  for (const payment of payments) {
+    const loan = (state.finance.loans || []).find((item) => item.id === payment.loanId);
+    if (!loan) throw new RuleError("missing_loan", "That loan is not on the record.");
+    const treasury = Number(payment.treasuryGp || 0);
+    const personal = Number(payment.personalGp || 0);
+    if (!Number.isInteger(treasury) || treasury < 0 || !Number.isInteger(personal) || personal < 0) {
+      throw new RuleError("bad_amount", "A loan payment is a whole number of GP, or zero.");
+    }
+    if (treasury + personal > loan.amountGp) throw new RuleError("bad_amount", "A loan cannot be paid below zero.");
+    treasuryTotal += treasury;
+    applied.push({ loan, treasury, personal });
+  }
+  if (treasuryTotal > 0) spend(state, treasuryTotal, "Loan payment from the treasury", command);
+  const parts = [];
+  for (const item of applied) {
+    item.loan.amountGp -= item.treasury + item.personal;
+    parts.push(`${item.loan.creditor}: ${item.treasury} GP from the treasury and ${item.personal} GP from personal treasure`);
+  }
+  return finish(state, command, { treasuryGp: treasuryTotal }, `Loan payments recorded. ${parts.join("; ")}. Personal treasure is not tracked as cash.`);
 }
 
 function finishProject(state, command) {
@@ -1296,29 +1390,7 @@ function recordDefenders(state, command) {
     .filter(Boolean)
     .map((name) => name.slice(0, 80));
   if (names.length > count) throw new RuleError("bad_amount", "There are more names than the defender count.");
-  const existing = state.roster.filter((person) => person.category === "defender" && person.status === "active" && person.facilityId === facility.id);
-  for (let index = count; index < existing.length; index += 1) existing[index].status = "gone";
-  const kept = existing.slice(0, count);
-  while (kept.length < count) {
-    const person = {
-      id: nid(state, "npc"),
-      name: `Defender ${state.roster.length + 1}`,
-      category: "defender",
-      summary: "Recorded as already housed. This was not a Recruit order.",
-      role: "Defender",
-      link: "",
-      unitId: facility.unitId,
-      facilityId: facility.id,
-      status: "active",
-      housed: true,
-      protectsOnce: false,
-    };
-    state.roster.push(person);
-    kept.push(person);
-  }
-  names.forEach((name, index) => {
-    kept[index].name = name;
-  });
+  facility.defenderCount = count;
   return finish(state, command, { facilityId: facility.id, count }, `Recorded ${count} defenders at ${facility.name}. No Recruit turn was run.`);
 }
 
@@ -1554,6 +1626,7 @@ function commitTurn(state, command) {
     status: "committed",
     turn: state.clock.turn,
     orderIds: [],
+    notes: readTurnNotes(command),
   };
   state.turns.push(turn);
   for (const facility of state.facilities.filter((item) => item.unitId === unit.id)) {
@@ -1604,7 +1677,15 @@ function commitTurn(state, command) {
     const order = placeOrder(state, command, unit, facility, spec, sub, request, turn);
     turn.orderIds.push(order.id);
   }
-  return finish(state, command, { turnId: turn.id, orderIds: turn.orderIds }, "Orders committed.");
+  const names = turn.orderIds.map((id) => state.orders.find((item) => item.id === id)?.label).filter(Boolean);
+  const summary = names.length ? `Orders committed: ${names.join(", ")}.` : "Orders committed.";
+  return finish(state, command, { turnId: turn.id, orderIds: turn.orderIds }, summary);
+}
+
+function readTurnNotes(command) {
+  const notes = String(command.notes ?? "");
+  if ([...notes].length > 600) throw new RuleError("notes_too_long", "A turn note can be at most 600 characters.");
+  return notes;
 }
 
 function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
@@ -1620,31 +1701,14 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
   };
   if (sub.auto === "barrack_recruit") {
     const count = Number(request.count);
-    const housed = defendersOf(state, facility.id).length;
+    const housed = housedDefenders(facility, state);
     const room = barrackCap(facility) - housed;
     if (room <= 0) throw new RuleError("barrack_full", "This barrack is full, so it cannot recruit.");
     if (!Number.isInteger(count) || count < 1 || count > 4) throw new RuleError("bad_amount", "Recruit 1 to 4 defenders.");
     if (count > room) throw new RuleError("barrack_cap", `This barrack has room for ${room} more, not ${count}.`);
-    const ids = [];
-    for (let i = 0; i < count; i += 1) {
-      const person = {
-        id: nid(state, "npc"),
-        name: `Defender ${state.roster.length + 1}`,
-        category: "defender",
-        summary: "",
-        role: "Defender",
-        link: "",
-        unitId: unit.id,
-        facilityId: facility.id,
-        status: "active",
-        housed: true,
-        protectsOnce: false,
-      };
-      state.roster.push(person);
-      ids.push(person.id);
-    }
+    facility.defenderCount = housed + count;
     order.status = "resolved";
-    order.result = { recruited: count, defenderIds: ids, housed: housed + count, cap: barrackCap(facility) };
+    order.result = { recruited: count, housed: facility.defenderCount, cap: barrackCap(facility) };
   } else if (sub.auto === "storehouse_buy") {
     const standardGp = Number(request.standardGp);
     const limit = buyLimitGp(unit.level);
@@ -1686,7 +1750,7 @@ function placeOrder(state, command, unit, facility, spec, sub, request, turn) {
     order.dueTurn = task.dueTurn;
     order.preview = { standardGp, proceeds, turns: 1 };
   } else if (sub.auto === "armory_stock") {
-    const defenders = state.roster.filter((person) => person.unitId === unit.id && person.category === "defender" && person.status === "active").length;
+    const defenders = unitDefenderCount(state, unit.id);
     const hasSmithy = activeSpecials(state, unit.id).some((item) => item.catalogId === "smithy");
     let cost = 100 + 100 * defenders;
     if (hasSmithy) cost = Math.floor(cost / 2);
@@ -1951,7 +2015,8 @@ function resolveAttack(state, command, unit, event) {
     monster.status = "gone";
     monster.protectsOnce = false;
   }
-  const defenders = state.roster.filter((person) => person.unitId === (detail.lossUnitId || unit.id) && person.category === "defender" && person.status === "active");
+  const lossUnit = detail.lossUnitId || unit.id;
+  const defenders = state.roster.filter((person) => person.unitId === lossUnit && person.category === "defender" && person.status === "active");
   const lost = [];
   for (let i = 0; i < kills && i < defenders.length; i += 1) {
     const person = detail.lossIds ? defenders.find((item) => item.id === detail.lossIds[i]) : defenders[i];
@@ -1959,13 +2024,19 @@ function resolveAttack(state, command, unit, event) {
     person.status = "dead";
     lost.push(person.id);
   }
+  let countLoss = kills;
+  for (const barrack of state.facilities.filter((item) => item.unitId === lossUnit && item.catalogId === "barrack" && item.defenderCount != null)) {
+    const take = Math.min(barrack.defenderCount || 0, countLoss);
+    barrack.defenderCount -= take;
+    countLoss -= take;
+  }
   if (stocked) {
     for (const facility of state.facilities) {
       if (facility.unitId === unit.id && facility.catalogId === "armory" && facility.stocked) facility.stocked = false;
     }
   }
   let shutdown = null;
-  const remaining = state.roster.filter((person) => person.unitId === unit.id && person.category === "defender" && person.status === "active").length;
+  const remaining = unitDefenderCount(state, unit.id);
   if (remaining === 0) {
     const specials = activeSpecials(state, unit.id);
     if (specials.length) {
@@ -2051,7 +2122,10 @@ export function facilityClosureFacts(state, facilityId) {
   const people = activeAt(state, facilityId);
   const work = facilityWork(state, facilityId);
   return {
-    defenders: people.filter((person) => person.category === "defender").length,
+    defenders: (() => {
+      const facility = state.facilities.find((item) => item.id === facilityId);
+      return facility?.defenderCount != null ? facility.defenderCount : people.filter((person) => person.category === "defender").length;
+    })(),
     lieutenants: people.filter((person) => person.category === "lieutenant").length,
     hirelings: people.filter((person) => person.category === "hireling").length,
     orders: work.orders.length,
