@@ -9,6 +9,7 @@ import { canAccept, markAgainstRecord, parseReview } from "./review.js";
 import { beginSave, failSave, markSavingButtons, succeedSave } from "./save-feedback.js";
 import { render } from "./render.js";
 import { addCalendarDays, dateForTurn } from "./calendar.js";
+import { migrateDefenderCounts } from "./migrate-defenders.js";
 import { journalDateLabel, turnReports } from "./journal.js";
 import { migrateTurns } from "./migrate-turns.js";
 import { RuleError, apply, emptyEstate, orderStartedTurn } from "./rules.js";
@@ -107,7 +108,8 @@ test("recruit adds four and stops at the housing cap", () => {
     mode: "orders",
     orders: [{ facilityId: barrack().id, suborder: "recruit", count: 4 }],
   }).state;
-  assert.equal(state.roster.filter((item) => item.status === "active").length, 4);
+  assert.equal(barrack().defenderCount, 4);
+  assert.equal(state.roster.filter((item) => item.category === "defender").length, 0);
   state = apply(state, {
     type: "commit_turn",
     unitId: "unit-party",
@@ -115,9 +117,9 @@ test("recruit adds four and stops at the housing cap", () => {
     mode: "orders",
     orders: [{ facilityId: barrack().id, suborder: "recruit", count: 4 }],
   }).state;
-  assert.equal(state.roster.filter((item) => item.category === "defender" && item.status === "active").length, 8);
+  assert.equal(barrack().defenderCount, 8);
   state = apply(state, { type: "commit_turn", unitId: "unit-party", presence: "present", mode: "orders", orders: [{ facilityId: barrack().id, suborder: "recruit", count: 4 }] }).state;
-  assert.equal(state.roster.filter((item) => item.status === "active").length, 12);
+  assert.equal(barrack().defenderCount, 12);
   assert.throws(() => apply(state, {
     type: "commit_turn",
     unitId: "unit-party",
@@ -333,10 +335,8 @@ test("DM can record defenders, loans, committed goods, and an order already runn
   const turns = state.turns.length;
   state = apply(state, { type: "record_defenders", facilityId: barrack.id, count: 2, names: ["Pell Ash", "Sarn Wick"] }).state;
   assert.equal(state.turns.length, turns);
-  assert.deepEqual(
-    state.roster.filter((person) => person.status === "active").map((person) => person.name),
-    ["Pell Ash", "Sarn Wick"],
-  );
+  assert.equal(state.facilities.find((item) => item.id === barrack.id).defenderCount, 2);
+  assert.equal(state.roster.filter((person) => person.category === "defender").length, 0);
   assert.throws(() => apply(state, { type: "record_defenders", actorRole: "editor", facilityId: barrack.id, count: 1 }), (error) => error.code === "forbidden");
   const cash = state.finance.cashGp;
   state = apply(state, { type: "set_loan", creditor: "Mill at Northbridge", amountGp: 250, note: "Seed money" }).state;
@@ -745,7 +745,7 @@ test("removing or replacing a room archives it and does not leave hirelings or u
   state = apply(state, { type: "record_defenders", facilityId: housed.id, count: 2, names: ["Pell Ash", "Sarn Wick"] }).state;
   assert.throws(() => apply(state, { type: "remove_facility", facilityId: housed.id, reason: "Empty the barracks.", hirelings: "release" }), (error) => error.code === "facility_held");
   assert.equal(state.facilities[0].status, "active");
-  assert.equal(state.roster.filter((person) => person.category === "defender" && person.status === "active").length, 2);
+  assert.equal(state.facilities[0].defenderCount, 2);
 });
 
 test("a basic-room replacement and a cancelled build do not invent a refund", () => {
@@ -814,7 +814,7 @@ test("the DM can replace a person in place, including an unnamed successor", () 
   state = party();
   state = add(state, "barrack");
   const barrack = state.facilities[0];
-  state = apply(state, { type: "record_defenders", facilityId: barrack.id, count: 1, names: ["Pell Ash"] }).state;
+  state = apply(state, { type: "roster_save", person: { name: "Pell Ash", category: "defender", role: "Defender", facilityId: barrack.id, unitId: "unit-party", status: "active" } }).state;
   const defender = state.roster.find((person) => person.category === "defender");
   assert.throws(() => apply(state, { type: "remove_person", personId: defender.id }), (error) => error.code === "person_held");
   const guard = apply(state, {
@@ -861,7 +861,7 @@ test("room and people screens keep DM corrections distinct from the published re
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/008_release_goods.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/009_tenday_defenders.sql"), "utf8");
   const turns = await readFile(path.join(root, "supabase/migrations/007_bastion_turns.sql"), "utf8");
   const rooms = await readFile(path.join(root, "supabase/migrations/006_manage_rooms_people.sql"), "utf8");
   const prior = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
@@ -936,15 +936,19 @@ test("practice sandbox renders and is labeled as not the group record", () => {
 
 test("Harptos dates are derived from the turn and an anchor", () => {
   const anchor = { turn: 1, month: "tarsakh", day: 10, festival: null, year: null };
-  assert.equal(dateForTurn(anchor, 1).text, "10 Tarsakh");
-  assert.equal(dateForTurn(anchor, 3).text, "24 Tarsakh");
-  assert.equal(dateForTurn(anchor, 4).text, "Greengrass");
+  const counted = { turnDays: 7, skipFestivals: false };
+  assert.equal(dateForTurn(anchor, 1, counted).text, "10 Tarsakh");
+  assert.equal(dateForTurn(anchor, 3, counted).text, "24 Tarsakh");
+  assert.equal(dateForTurn(anchor, 4, counted).text, "Greengrass");
   assert.equal(dateForTurn(null, 3), null);
   assert.equal(dateForTurn(anchor, null), null);
   assert.equal(addCalendarDays({ festival: "midsummer", year: 1492 }, 1).festival, "shieldmeet");
   assert.equal(addCalendarDays({ festival: "midsummer", year: 1491 }, 1).month, "eleasis");
-  assert.equal(dateForTurn({ turn: 1, month: "flamerule", day: 24, festival: null, year: 1492 }, 3).text, "6 Eleasis, 1492 DR");
-  assert.equal(dateForTurn({ turn: 1, month: "flamerule", day: 24, festival: null, year: 1491 }, 3).text, "7 Eleasis, 1491 DR");
+  assert.equal(dateForTurn({ turn: 1, month: "flamerule", day: 24, festival: null, year: 1492 }, 3, counted).text, "6 Eleasis, 1492 DR");
+  assert.equal(dateForTurn({ turn: 1, month: "flamerule", day: 24, festival: null, year: 1491 }, 3, counted).text, "7 Eleasis, 1491 DR");
+  const tenday = { turnDays: 10, skipFestivals: true };
+  assert.equal(dateForTurn({ turn: 1, month: "tarsakh", day: 10, year: 1495 }, 4, tenday).text, "10 Mirtul, 1495 DR");
+  assert.equal(dateForTurn({ turn: 1, month: "tarsakh", day: 10, year: 1495 }, 4, { turnDays: 10, skipFestivals: false }).text, "9 Mirtul, 1495 DR");
 });
 
 test("a member can set the date and a reader cannot move the turn", () => {
@@ -1066,9 +1070,9 @@ test("storehouse buy and sell name the goods instead of guessing a lot", () => {
   assert.equal(sold.goods.find((item) => item.name === "Wool").reservedGp, 0);
   assert.equal(sold.finance.cashGp, 800);
   assert.equal(sold.tasks[0].proceeds, saleProceeds(200, 5));
-  const page = render({ mode: "sandbox", view: "turn", state, turnGuide: { phase: "orders" }, error: "", notice: "", configured: false, serviceRole: false });
+  const page = render({ mode: "sandbox", view: "turn", state, turnGuide: { phase: "orders" }, orderChoice: { [store.id]: "sell" }, error: "", notice: "", configured: false, serviceRole: false });
   assert.match(page, /Lot to sell/);
-  assert.match(page, /Goods to buy/);
+  assert.doesNotMatch(page, /Goods to buy/);
   assert.doesNotMatch(page, /Record goods before selling/);
 });
 
@@ -1082,8 +1086,7 @@ test("the journal groups turns and leaves the date unset until an anchor exists"
     mode: "orders",
     orders: [{ facilityId: barrack.id, suborder: "recruit", count: 2 }],
   }).state;
-  const defender = state.roster.find((person) => person.category === "defender");
-  state = apply(state, { type: "roster_save", person: { ...defender, name: "Pell Ash" } }).state;
+  state = apply(state, { type: "roster_save", person: { name: "Pell Ash", category: "household", role: "Steward", unitId: "unit-party" } }).state;
   assert.equal(journalDateLabel(state, 1), "date not set");
   let reports = turnReports(state);
   assert.equal(reports.length, 1);
@@ -1098,7 +1101,7 @@ test("the journal groups turns and leaves the date unset until an anchor exists"
   state = apply(state, { type: "commit_turn", unitId: "unit-party", presence: "present", mode: "no_orders" }).state;
   reports = turnReports(state);
   assert.deepEqual(reports.map((report) => report.turn), [1, 2]);
-  assert.equal(reports[1].date, "17 Tarsakh, 1495 DR");
+  assert.equal(reports[1].date, "20 Tarsakh, 1495 DR");
   assert.match(reports[1].brief, /no orders were issued/);
   const closed = render({ mode: "remote", role: "reader", view: "journal", state, journalTurn: "", error: "", notice: "", configured: true, serviceRole: false });
   assert.match(closed, /aria-expanded="false"/);
@@ -1111,6 +1114,88 @@ test("the journal groups turns and leaves the date unset until an anchor exists"
   const backup = render({ mode: "sandbox", view: "backup", state, error: "", notice: "", configured: false, serviceRole: false });
   assert.match(backup, /Download JSON backup/);
   assert.match(backup, /Backup</);
+});
+
+test("a forward turn and a re-anchor rewrite the session label", () => {
+  let state = party();
+  state = apply(state, { type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: 1495 }).state;
+  assert.equal(state.clock.label, "10 Tarsakh, 1495 DR");
+  state = apply(state, { type: "take_turn" }).state;
+  assert.equal(state.clock.turn, 2);
+  assert.equal(state.clock.label, "20 Tarsakh, 1495 DR");
+});
+
+test("loan payments split treasury and personal treasure and cannot go below zero", () => {
+  let state = withCash(party(), 100);
+  state = apply(state, { type: "set_loan", creditor: "Mill", amountGp: 300 }).state;
+  const loanId = state.finance.loans[0].id;
+  assert.throws(() => apply(state, { type: "repay_loans", actorRole: "reader", payments: [{ loanId, treasuryGp: 10, personalGp: 0 }] }), (error) => error.code === "forbidden");
+  assert.throws(() => apply(state, { type: "repay_loans", payments: [{ loanId, treasuryGp: 200, personalGp: 0 }] }), (error) => error.code === "insufficient_cash");
+  assert.throws(() => apply(state, { type: "repay_loans", payments: [{ loanId, treasuryGp: 50, personalGp: 260 }] }), (error) => error.code === "bad_amount");
+  state = apply(state, { type: "repay_loans", payments: [{ loanId, treasuryGp: 40, personalGp: 60 }] }).state;
+  assert.equal(state.finance.cashGp, 60);
+  assert.equal(state.finance.loans[0].amountGp, 200);
+  assert.match(state.audit.at(-1).summary, /personal treasure/);
+  const home = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(home, /What is due/);
+  assert.match(home, /Mill/);
+  assert.match(home, /200 GP still owed/);
+});
+
+test("turn notes are capped at 600 characters and a recorded order can be closed without cash", () => {
+  let state = withCash(add(party(), "storehouse"), 0);
+  const store = state.facilities[0];
+  state = apply(state, { type: "record_goods", name: "Herbs", standardGp: 300 }).state;
+  state = apply(state, { type: "reserve_goods", lotId: state.goods[0].id, standardGp: 300 }).state;
+  state = apply(state, { type: "record_order", facilityId: store.id, suborder: "sell", lotId: state.goods[0].id, standardGp: 300, startedTurn: 1 }).state;
+  const orderId = state.orders[0].id;
+  assert.throws(() => apply(state, { type: "close_recorded_order", actorRole: "editor", orderId, choice: "cancel" }), (error) => error.code === "forbidden");
+  const cancelled = apply(state, { type: "close_recorded_order", orderId, choice: "cancel" }).state;
+  assert.equal(cancelled.orders[0].status, "cancelled");
+  assert.equal(cancelled.goods[0].reservedGp, 0);
+  assert.equal(cancelled.finance.cashGp, 0);
+  assert.equal(cancelled.tasks[0].status, "cancelled");
+  state = apply(state, { type: "commit_turn", unitId: "unit-party", presence: "absent_with_contact", contact: "Message spell", mode: "no_orders", notes: "The yard was quiet." }).state;
+  assert.equal(state.turns.at(-1).notes, "The yard was quiet.");
+  assert.match(state.audit.at(-1).summary, /no orders|Recorded a turn/);
+  assert.throws(() => apply(state, { type: "commit_turn", unitId: "unit-party", presence: "present", mode: "no_orders", notes: "x".repeat(601) }), (error) => error.code === "notes_too_long");
+  const reports = turnReports(state);
+  const card = reports.find((item) => item.turn === state.clock.turn);
+  assert.match(card.brief, /Message spell/);
+  assert.match(card.notes, /yard was quiet/);
+  const page = render({ mode: "sandbox", view: "turn", state, turnGuide: { phase: "orders" }, orderChoice: { [store.id]: "sell" }, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(page, /Lot to sell/);
+  assert.doesNotMatch(page, /Goods to buy/);
+  assert.doesNotMatch(page, /How many/);
+  const barrackState = add(party(), "barrack");
+  const recruitPage = render({ mode: "sandbox", view: "turn", state: barrackState, turnGuide: { phase: "orders" }, orderChoice: { [barrackState.facilities[0].id]: "recruit" }, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(recruitPage, /How many/);
+});
+
+test("generic defenders fold into the barrack count and named defenders stay", () => {
+  const barrack = { id: "fac-b", catalogId: "barrack", status: "active", unitId: "unit-party" };
+  const converted = migrateDefenderCounts({
+    clock: { turn: 4, anchor: { turn: 4, month: "mirtul", day: 10, year: 1495 } },
+    finance: { cashGp: 0, loans: [{ id: "loan-1", amountGp: 300 }] },
+    facilities: [barrack],
+    roster: [
+      { id: "a", name: "Defender 1", category: "defender", status: "active", facilityId: "fac-b" },
+      { id: "b", name: "Defender 12", category: "defender", status: "active", facilityId: "fac-b" },
+      { id: "c", name: "Bram Holt", category: "defender", status: "active", facilityId: "fac-b" },
+    ],
+  });
+  assert.equal(converted.facilities[0].defenderCount, 3);
+  assert.equal(converted.roster.length, 1);
+  assert.equal(converted.roster[0].name, "Bram Holt");
+  assert.equal(converted.finance.cashGp, 0);
+  assert.equal(converted.finance.loans[0].amountGp, 300);
+  assert.equal(converted.clock.anchor.day, 10);
+  assert.equal(converted.clock.turn, 4);
+  assert.equal(converted.clock.turnDays, 10);
+  assert.equal(converted.clock.skipFestivals, true);
+  const again = migrateDefenderCounts(converted);
+  assert.equal(again.facilities[0].defenderCount, 3);
+  assert.equal(again.roster.length, 1);
 });
 
 test("the tracker no longer labels game time in days", async () => {

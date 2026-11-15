@@ -238,6 +238,22 @@ textarea { min-height: 120px; }
   font-size: 12px;
   line-height: 1.45;
 }
+.people-list { display: grid; }
+.person-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e4d3b4;
+}
+.person-line h3 { margin: 0; font-size: 18px; }
+.person-tags, .person-role { margin: 0; }
+.person-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+@media (max-width: 700px) {
+  .person-line { grid-template-columns: 1fr; }
+  .person-actions { justify-content: flex-start; }
+}
 .journal-list { display: grid; gap: 10px; }
 .journal-turn {
   width: 100%;

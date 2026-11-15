@@ -21,6 +21,7 @@ export const FESTIVALS = [
   ["midsummer", "Midsummer"],
   ["shieldmeet", "Shieldmeet"],
   ["highharvestide", "Highharvestide"],
+  ["feast_of_the_moon", "Feast of the Moon"],
 ];
 
 const MONTH_IDS = new Set(MONTHS.map(([id]) => id));
@@ -43,6 +44,7 @@ function segments(leap) {
       if (leap) list.push({ kind: "festival", id: "shieldmeet", name: "Shieldmeet", length: 1 });
     }
     if (id === "eleint") list.push({ kind: "festival", id: "highharvestide", name: "Highharvestide", length: 1 });
+    if (id === "uktar") list.push({ kind: "festival", id: "feast_of_the_moon", name: "Feast of the Moon", length: 1 });
   }
   return list;
 }
@@ -105,6 +107,53 @@ function midsummerIndex(leap) {
   return locate({ festival: "midsummer" }, leap);
 }
 
+export function calendarOptions(clock = {}) {
+  return {
+    turnDays: Number(clock.turnDays) === 7 ? 7 : 10,
+    skipFestivals: clock.skipFestivals !== false,
+  };
+}
+
+function stepOneDay(date, direction) {
+  const next = addCalendarDays(date, direction);
+  if (!next) return null;
+  return {
+    festival: next.festival,
+    month: next.month,
+    day: next.day,
+    year: next.year ?? null,
+    festivalName: next.festivalName,
+    monthName: next.monthName,
+    shieldmeetUncertain: next.shieldmeetUncertain,
+  };
+}
+
+export function addTurnDays(date, amount, skipFestivals) {
+  if (!skipFestivals || amount === 0) return addCalendarDays(date, amount);
+  if (!date || !Number.isInteger(amount)) return null;
+  const direction = amount < 0 ? -1 : 1;
+  let cursor = {
+    festival: date.festival || null,
+    month: date.month || null,
+    day: date.day ?? null,
+    year: date.year ?? null,
+  };
+  let uncertain = false;
+  for (let left = Math.abs(amount); left > 0; left -= 1) {
+    let next = stepOneDay(cursor, direction);
+    if (!next) return null;
+    uncertain = uncertain || next.shieldmeetUncertain;
+    while (next.festival) {
+      const hopped = stepOneDay(next, direction);
+      if (!hopped) return null;
+      uncertain = uncertain || hopped.shieldmeetUncertain;
+      next = hopped;
+    }
+    cursor = next;
+  }
+  return { ...cursor, shieldmeetUncertain: uncertain };
+}
+
 export function addCalendarDays(date, amount) {
   if (!date || !Number.isInteger(amount)) return null;
   if (date.year != null) {
@@ -160,15 +209,16 @@ export function formatCalendarDate(date) {
   return date.year == null ? core : `${core}, ${date.year} DR`;
 }
 
-export function dateForTurn(anchor, turn) {
+export function dateForTurn(anchor, turn, clock = {}) {
   if (!anchor || turn == null || turn === "") return null;
   const current = Number(turn);
   const origin = Number(anchor.turn);
   if (!Number.isInteger(current) || !Number.isInteger(origin)) return null;
+  const { turnDays, skipFestivals } = calendarOptions(clock);
   const described = anchor.festival
     ? { festival: anchor.festival, month: null, day: null, year: anchor.year ?? null }
     : { festival: null, month: anchor.month, day: anchor.day, year: anchor.year ?? null };
-  const shifted = addCalendarDays(described, 7 * (current - origin));
+  const shifted = addTurnDays(described, turnDays * (current - origin), skipFestivals);
   if (!shifted) return null;
   return { ...shifted, text: formatCalendarDate(shifted) };
 }

@@ -24,7 +24,8 @@ const model = {
   formError: null,
   confirmGoodsId: "",
   releaseGoodsId: "",
-  journalTurn: "",
+  journalTurn: null,
+  orderChoice: {},
   confirmPersonId: "",
   editPersonId: "",
   replacePersonId: "",
@@ -182,9 +183,21 @@ app.addEventListener("click", async (event) => {
     link.click();
     URL.revokeObjectURL(link.href);
   }
+  if (action === "mark-recorded-order" || action === "cancel-recorded-order") {
+    try {
+      await commit({
+        type: "close_recorded_order",
+        orderId: button.dataset.id,
+        choice: action === "cancel-recorded-order" ? "cancel" : "done",
+      }, action);
+    } catch (error) {
+      fail(error);
+    }
+  }
   if (action === "toggle-journal") {
     const turn = button.dataset.turn;
-    model.journalTurn = String(model.journalTurn) === String(turn) ? "" : turn;
+    const expanded = button.getAttribute("aria-expanded") === "true";
+    model.journalTurn = expanded ? "" : turn;
     paint();
   }
   if (action === "confirm-release-goods") {
@@ -466,6 +479,8 @@ app.addEventListener("submit", async (event) => {
         unitId: model.state.units[0].id,
         label: data.label,
         turn: data.turn === "" ? null : Number(data.turn),
+        turnDays: Number(data.turnDays),
+        skipFestivals: data.skipFestivals === "on",
         level: Number(data.level),
         grantReplacements: data.grantReplacements === "on",
         capabilities,
@@ -526,6 +541,13 @@ app.addEventListener("submit", async (event) => {
         lotId: data.lotId || null,
         standardGp: data.standardGp === "" ? null : Number(data.standardGp),
       });
+    } else if (form.id === "repay-loans") {
+      const payments = (model.state.finance.loans || []).map((loan) => ({
+        loanId: loan.id,
+        treasuryGp: Number(data[`treasury-${loan.id}`] || 0),
+        personalGp: Number(data[`personal-${loan.id}`] || 0),
+      })).filter((payment) => payment.treasuryGp || payment.personalGp);
+      save({ type: "repay_loans", payments });
     } else if (form.id === "take-turn") {
       const ok = await save({ type: "take_turn" });
       if (ok) {
@@ -612,8 +634,16 @@ function turnCommand(data) {
     }
     orders.push(order);
   }
-  return { type: "commit_turn", unitId: data.unitId, presence: data.presence, contact: data.contact, mode: data.mode, orders };
+  return { type: "commit_turn", unitId: data.unitId, presence: data.presence, contact: data.contact, mode: data.mode, orders, notes: data.notes || "" };
 }
+
+app.addEventListener("change", (event) => {
+  const name = event.target?.name || "";
+  if (!name.startsWith("order-")) return;
+  const facilityId = name.slice("order-".length);
+  model.orderChoice = { ...(model.orderChoice || {}), [facilityId]: event.target.value };
+  paint();
+});
 
 app.addEventListener("input", (event) => {
   if (event.target?.id === "review-text") model.reviewText = event.target.value;

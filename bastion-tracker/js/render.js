@@ -26,7 +26,7 @@ function canSetDate(model) {
 
 function turnLine(state) {
   if (state.clock.turn == null) return "Bastion turn unknown";
-  const shown = dateForTurn(state.clock.anchor, state.clock.turn);
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
   return shown?.text ? `Turn ${state.clock.turn} · ${shown.text}` : `Turn ${state.clock.turn}`;
 }
 
@@ -147,7 +147,7 @@ function renderDashboard(model) {
   const state = model.state;
   const unit = state.units[0];
   const specials = state.facilities.filter((item) => item.kind === "special" && item.status !== "archived");
-  const defenders = state.roster.filter((item) => item.category === "defender" && item.status === "active");
+  const defenders = defenderTotal(state);
   const projects = [...state.projects.filter((item) => item.status === "building"), ...state.walls.squares.filter((item) => item.status === "building")];
   const pending = state.events.filter((item) => item.status === "pending");
   const session = state.clock.label ? `<p class="muted">Session date: ${esc(state.clock.label)}</p>` : "";
@@ -157,7 +157,7 @@ function renderDashboard(model) {
     <div class="stats">
       <div class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></div>
       <div class="stat"><span>Specials</span><strong>${specials.length}/${specialCap(unit.level)}</strong></div>
-      <div class="stat"><span>Defenders</span><strong>${defenders.length}</strong></div>
+      <div class="stat"><span>Defenders</span><strong>${defenders}</strong></div>
       <div class="stat"><span>Open timers</span><strong>${projects.length + state.tasks.filter((item) => item.status === "open").length}</strong></div>
     </div>
     ${state.finance.cashKnown ? "" : `<p class="banner warn">Cash, loans, and goods on hand are unknown until you enter them. Spending and payouts stay blocked.</p>`}
@@ -169,7 +169,8 @@ function renderDashboard(model) {
       <button type="button" data-action="nav" data-view="people">People</button>
     </div>
     <section class="panel" style="margin-top:14px"><h2>What is due</h2>
-      ${projects.length || state.tasks.some((item) => item.status === "open") ? `<ul>${projects.map((item) => `<li>${esc(item.name || "Wall square")} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}</li>`).join("")}${state.tasks.filter((item) => item.status === "open").map((item) => `<li>${esc(item.auto)} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}${item.timerNeedsCheck ? " · needs a finish turn" : ""}</li>`).join("")}</ul>` : `<p class="muted">No open timers.</p>`}
+      ${(state.finance.loans || []).length ? `<ul>${state.finance.loans.map((loan) => `<li>Loan · ${esc(loan.creditor)} · ${loan.amountGp} GP still owed</li>`).join("")}</ul>` : ""}
+      ${projects.length || state.tasks.some((item) => item.status === "open") ? `<ul>${projects.map((item) => `<li>${esc(item.name || "Wall square")} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}</li>`).join("")}${state.tasks.filter((item) => item.status === "open").map((item) => `<li>${esc(item.auto)} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}${item.timerNeedsCheck ? " · needs a finish turn" : ""}</li>`).join("")}</ul>` : (state.finance.loans || []).length ? "" : `<p class="muted">No open timers.</p>`}
     </section>`;
 }
 
@@ -400,6 +401,12 @@ function renderProjects(model, manage) {
   }).join("")}</ul>`;
 }
 
+function defenderTotal(state) {
+  const barracks = state.facilities.filter((item) => item.catalogId === "barrack" && item.status !== "archived" && item.defenderCount != null);
+  if (barracks.length) return barracks.reduce((sum, item) => sum + (item.defenderCount || 0), 0);
+  return state.roster.filter((item) => item.category === "defender" && item.status === "active").length;
+}
+
 function personLabel(person) {
   const name = String(person.name || "").trim();
   if (name) return name;
@@ -425,17 +432,18 @@ function renderPeople(model) {
   return `<h2 class="with-mark">${mark("pair")} People</h2><p class="muted">Names, a short public line, and an optional link. Full biographies stay in Notion. This page does not write to Notion. An editor or the DM can add a person with no name yet and fill the name in later. Only the DM can remove a mistaken name, replace someone, or move a person to another room.</p>
     ${model.mode === "remote" && !model.role ? `<p class="banner warn">Your role could not be confirmed, so removing and replacing people stays off.</p>` : ""}
     ${!manage && model.role ? `<p class="banner warn">You can add someone and name a placeholder later. Removing, replacing, and moving people stays with the DM.</p>` : ""}
-    <div class="list">${people.map((person) => {
+    <div class="people-list">${people.map((person) => {
       const confirming = model.confirmPersonId === person.id;
       const noteId = `remove-person-${person.id}`;
       const unnamed = !String(person.name || "").trim();
       const room = assignedRoom(model.state, person);
+      const detail = [person.role, person.summary, room ? `Room: ${room}` : ""].filter(Boolean).join(" · ");
       const action = !manage
-        ? `<span class="confirm-row"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button></span>`
+        ? `<span class="person-actions"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button></span>`
         : (confirming
-          ? `<span class="confirm-row"><span id="${esc(noteId)}">Remove this entry? Replacement is the other choice when this person still holds a post. Only the DM can do either.</span><button type="button" data-action="remove-person" data-id="${esc(person.id)}" aria-describedby="${esc(noteId)}">Remove this person</button><button type="button" data-action="cancel-remove-person">Cancel</button></span>`
-          : `<span class="confirm-row"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button><button type="button" data-action="replace-person" data-id="${esc(person.id)}">Replace</button><button type="button" data-action="confirm-remove-person" data-id="${esc(person.id)}">Remove</button></span>`);
-      return `<article class="person card"><h3>${esc(personLabel(person))}</h3><p><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span>${unnamed ? ` <span class="tag">Unnamed</span>` : ""}</p>${person.summary ? `<p>${esc(person.summary)}</p>` : `<p>${esc(person.role)}</p>`}${room ? `<p class="muted">Room: ${esc(room)}</p>` : ""}${person.link ? `<p><a href="${esc(person.link)}">External note</a></p>` : ""}${action}</article>`;
+          ? `<span class="person-actions"><span id="${esc(noteId)}">Remove this entry? Replacement is the other choice when this person still holds a post. Only the DM can do either.</span><button type="button" data-action="remove-person" data-id="${esc(person.id)}" aria-describedby="${esc(noteId)}">Remove this person</button><button type="button" data-action="cancel-remove-person">Cancel</button></span>`
+          : `<span class="person-actions"><button type="button" data-action="edit-person" data-id="${esc(person.id)}">Edit</button><button type="button" data-action="replace-person" data-id="${esc(person.id)}">Replace</button><button type="button" data-action="confirm-remove-person" data-id="${esc(person.id)}">Remove</button></span>`);
+      return `<article class="person-line"><div><h3>${esc(personLabel(person))}</h3><p class="person-tags"><span class="tag">${esc(person.category)}</span> <span class="tag">${esc(person.status)}</span>${unnamed ? ` <span class="tag">Unnamed</span>` : ""}${person.link ? ` <a href="${esc(person.link)}">External note</a>` : ""}</p></div><p class="person-role">${esc(detail)}</p>${action}</article>`;
     }).join("") || `<p class="muted">No one is named yet.</p>`}</div>
     <form id="person" class="panel stack" style="margin-top:14px">
       <h3>${editing ? "Edit this person" : "Add someone"}</h3>
@@ -480,24 +488,33 @@ function calendarFields(prefix, anchor) {
     <label for="${prefix}-year">Year, if you know it <input id="${prefix}-year" name="year" inputmode="numeric" value="${anchor?.year ?? ""}" placeholder="Leave blank if the year is unknown"></label>`;
 }
 
-function tradeFields(state, facility) {
+function tradeFields(state, facility, choice) {
+  if (facility.catalogId === "barrack" && choice === "recruit") {
+    return `<label>How many <input name="count-${esc(facility.id)}" inputmode="numeric" placeholder="1 to 4"></label>`;
+  }
   if (facility.catalogId !== "storehouse") return "";
   const unit = state.units.find((item) => item.id === facility.unitId) || state.units[0];
   const limit = buyLimitGp(unit?.level || 5);
-  const lots = state.goods.filter((lot) => lot.status === "on_hand" && lot.standardGp - (lot.reservedGp || 0) > 0);
-  return `<label>Lot to sell <select name="sell-lot-${esc(facility.id)}"><option value="">Choose goods</option>${lots.map((lot) => {
-    const free = lot.standardGp - (lot.reservedGp || 0);
-    return `<option value="${esc(lot.id)}">${esc(lot.name?.trim() ? lot.name : "Unnamed goods")} · ${free} GP free</option>`;
-  }).join("")}</select></label>
-    <label>List price to sell, in GP <input name="sell-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Only the free amount"></label>
-    <label>Goods to buy <input name="buy-name-${esc(facility.id)}" maxlength="80" placeholder="Name the goods"></label>
-    <label>List price to buy, in GP <input name="buy-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Up to ${limit}"></label>
-    <p class="muted">This level can buy up to ${limit} GP. Buying charges that price when the order is saved, and only if the cash on hand is known and enough. A sale pays on the next Bastion turn.</p>`;
+  if (choice === "sell") {
+    const lots = state.goods.filter((lot) => lot.status === "on_hand" && lot.standardGp - (lot.reservedGp || 0) > 0);
+    return `<label>Lot to sell <select name="sell-lot-${esc(facility.id)}"><option value="">Choose goods</option>${lots.map((lot) => {
+      const free = lot.standardGp - (lot.reservedGp || 0);
+      return `<option value="${esc(lot.id)}">${esc(lot.name?.trim() ? lot.name : "Unnamed goods")} · ${free} GP free</option>`;
+    }).join("")}</select></label>
+      <label>List price to sell, in GP <input name="sell-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Only the free amount"></label>
+      <p class="muted">A sale pays on the next Bastion turn. The level markup is added automatically.</p>`;
+  }
+  if (choice === "buy") {
+    return `<label>Goods to buy <input name="buy-name-${esc(facility.id)}" maxlength="80" placeholder="Name the goods"></label>
+      <label>List price to buy, in GP <input name="buy-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Up to ${limit}"></label>
+      <p class="muted">This level can buy up to ${limit} GP. The price is charged when the order is saved, and only if the cash on hand is known and enough.</p>`;
+  }
+  return "";
 }
 
-function orderChoices(facility) {
+function orderChoices(facility, choice) {
   const spec = specialById(facility.catalogId);
-  return (spec?.subs || []).map((sub) => `<option value="${sub.id}">${esc(sub.label)}${sub.turns == null ? "" : ` · ${sub.turns} turn${sub.turns === 1 ? "" : "s"}`}</option>`).join("");
+  return (spec?.subs || []).map((sub) => `<option value="${sub.id}" ${choice === sub.id ? "selected" : ""}>${esc(sub.label)}${sub.turns == null ? "" : ` · ${sub.turns} turn${sub.turns === 1 ? "" : "s"}`}</option>`).join("");
 }
 
 function renderTurn(model) {
@@ -507,7 +524,7 @@ function renderTurn(model) {
   const pending = state.events.find((item) => item.status === "pending");
   const phase = model.turnGuide?.phase || "advance";
   const report = model.turnGuide?.report;
-  const shown = dateForTurn(state.clock.anchor, state.clock.turn);
+  const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
   const settled = (report?.settled || []).map((item) => {
     if (item.proceeds != null) return `<li>Sale paid ${item.proceeds} GP.</li>`;
     if (item.standardGp != null && item.status !== "ready") return `<li>Goods arrived, list ${item.standardGp} GP.</li>`;
@@ -529,11 +546,14 @@ function renderTurn(model) {
       <label>How they sent word, if they did <input id="contact" name="contact" maxlength="160"></label>
       <label>This turn <select id="mode" name="mode"><option value="orders">Issue orders</option><option value="maintain">Maintain the whole unit</option><option value="no_orders">No orders, owner unable</option></select></label>
       <p class="muted">Maintain cannot share the turn with other orders. Being away without a message forces Maintain. An order of 1 turn finishes the next time you take a turn.</p>
-      ${specials.map((facility) => `<fieldset><legend>${facilityMark(specialById(facility.catalogId))}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
-          <label>Order <select name="order-${facility.id}"><option value="">No order</option>${orderChoices(facility)}</select></label>
-          <label>How many, if the order asks <input name="count-${facility.id}" inputmode="numeric" placeholder="1 to 4 for defenders"></label>
-          ${tradeFields(state, facility)}
-        </fieldset>`).join("")}
+      ${specials.map((facility) => {
+        const choice = model.orderChoice?.[facility.id] || "";
+        return `<fieldset><legend>${facilityMark(specialById(facility.catalogId))}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
+          <label>Order <select name="order-${facility.id}"><option value="">No order</option>${orderChoices(facility, choice)}</select></label>
+          ${tradeFields(state, facility, choice)}
+        </fieldset>`;
+      }).join("")}
+      <label for="turn-notes">Note for this turn <textarea id="turn-notes" name="notes" maxlength="600" placeholder="Optional. At most 600 characters."></textarea></label>
       <button class="primary" type="submit">Commit orders</button>
     </form>` : "";
   return `<h2 class="with-mark">${mark("cycle")} Turn</h2>
@@ -544,6 +564,7 @@ function renderTurn(model) {
     ${results}
     ${dateStep}
     ${orders}
+    ${manage && (state.finance.loans || []).length ? `<form id="repay-loans" class="panel stack" style="margin-top:14px"><h3>Loans this turn</h3><p class="muted">Treasury payments come out of tracked cash. Personal treasure is recorded and is not tracked as cash. A loan cannot go below zero.</p>${state.finance.loans.map((loan) => `<fieldset><legend>${esc(loan.creditor)} · ${loan.amountGp} GP owed</legend><label>Paid from treasury, in GP <input name="treasury-${esc(loan.id)}" inputmode="numeric" value="0"></label><label>Paid from personal treasure, in GP <input name="personal-${esc(loan.id)}" inputmode="numeric" value="0"></label></fieldset>`).join("")}<button type="submit">Apply loan payments</button></form>` : ""}
     ${pending ? `<form id="event" class="panel stack" style="margin-top:14px"><h3>Maintain event</h3>
       <p class="muted">Enter the dice you rolled, or choose the event. Opening this page again will not roll for you.</p>
       <label>d100, optional <input id="event-roll" name="roll" inputmode="numeric"></label>
@@ -616,8 +637,10 @@ function renderBackup(model) {
 
 function renderStewardJournal(model) {
   const reports = turnReports(model.state);
+  const newest = reports.length ? reports[reports.length - 1].turn : "";
+  const openTurn = model.journalTurn == null ? newest : model.journalTurn;
   const cards = reports.map((report) => {
-    const open = String(model.journalTurn) === String(report.turn);
+    const open = String(openTurn) === String(report.turn);
     const panelId = `journal-panel-${report.turn}`;
     return `<article class="panel journal-card">
       <button type="button" class="journal-turn" aria-expanded="${open ? "true" : "false"}" aria-controls="${panelId}" data-action="toggle-journal" data-turn="${esc(report.turn)}">
@@ -626,6 +649,7 @@ function renderStewardJournal(model) {
       </button>
       <div id="${panelId}" class="journal-brief" ${open ? "" : "hidden"}>
         <p>${esc(report.brief)}</p>
+        ${report.notes ? `<p>${esc(report.notes)}</p>` : ""}
         ${report.footnote ? `<p class="muted">${esc(report.footnote)}</p>` : ""}
       </div>
     </article>`;
@@ -654,6 +678,8 @@ function renderSettings(model) {
       <label><input id="grant-replacements" name="grantReplacements" type="checkbox"> This is a level-up. Add one replacement for each level gained.</label>
       <label for="session-label">Session date <input id="session-label" name="label" value="${esc(state.clock.label)}" placeholder="Leave blank if you are not noting a real-world date"></label>
       <label for="turn-number">Bastion turn <input id="turn-number" name="turn" inputmode="numeric" value="${state.clock.turn ?? ""}" placeholder="Unknown"></label>
+      <label for="turn-days">Turn length <select id="turn-days" name="turnDays"><option value="10" ${state.clock.turnDays !== 7 ? "selected" : ""}>Tenday</option><option value="7" ${state.clock.turnDays === 7 ? "selected" : ""}>Shorter chapter turn</option></select></label>
+      <label><input id="skip-festivals" name="skipFestivals" type="checkbox" ${state.clock.skipFestivals === false ? "" : "checked"}> Festival days are skipped, not counted in the turn</label>
       <fieldset><legend>Prerequisites this owner meets</legend>
         ${Object.entries(PREREQ_LABELS).map(([id, label]) => `<label><input type="checkbox" name="cap" value="${id}" ${unit.capabilities.includes(id) ? "checked" : ""}> ${esc(label)}</label>`).join("")}
       </fieldset>
@@ -724,7 +750,7 @@ function renderRecord(model) {
       ${(state.orders || []).filter((order) => order.startNeedsCheck).map((order) => `<form class="stack" id="order-start-${esc(order.id)}"><p class="banner warn">${esc(order.id)} needs a start turn. A previous number, ${order.previousStartNumber ?? "unknown"}, was kept for review and is not the start turn.</p><input type="hidden" name="orderId" value="${esc(order.id)}"><label for="fix-${esc(order.id)}">Bastion turn it started <input id="fix-${esc(order.id)}" name="startedTurn" inputmode="numeric" placeholder="Leave blank only if you are marking it unknown"></label><button class="primary" type="submit">Save this start turn</button><button type="submit" name="unknown" value="on">Mark the start unknown</button></form>`).join("")}
       ${orders.length ? `<ul>${orders.map((order) => {
         const started = orderStartedTurn(order);
-        return `<li>${esc(order.label || order.suborder)} · started turn ${order.startNeedsCheck ? "needs a check" : (started ?? "unknown")}${order.note ? ` · ${esc(order.note)}` : ""}</li>`;
+        return `<li>${esc(order.label || order.suborder)} · started turn ${order.startNeedsCheck ? "needs a check" : (started ?? "unknown")}${order.note ? ` · ${esc(order.note)}` : ""} <button type="button" data-action="mark-recorded-order" data-id="${esc(order.id)}">Mark done</button> <button type="button" data-action="cancel-recorded-order" data-id="${esc(order.id)}">Cancel</button></li>`;
       }).join("")}</ul>` : ""}
     </form>`;
 }
