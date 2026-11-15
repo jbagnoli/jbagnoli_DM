@@ -23,6 +23,8 @@ const model = {
   reviewText: "",
   formError: null,
   confirmGoodsId: "",
+  releaseGoodsId: "",
+  journalTurn: "",
   confirmPersonId: "",
   editPersonId: "",
   replacePersonId: "",
@@ -179,6 +181,21 @@ app.addEventListener("click", async (event) => {
     link.download = model.mode === "sandbox" ? "practice-bastion.json" : "bastion-backup.json";
     link.click();
     URL.revokeObjectURL(link.href);
+  }
+  if (action === "toggle-journal") {
+    const turn = button.dataset.turn;
+    model.journalTurn = String(model.journalTurn) === String(turn) ? "" : turn;
+    paint();
+  }
+  if (action === "confirm-release-goods") {
+    model.releaseGoodsId = button.dataset.id;
+    model.confirmGoodsId = "";
+    model.error = "";
+    paint();
+  }
+  if (action === "cancel-release-goods") {
+    model.releaseGoodsId = "";
+    paint();
   }
   if (action === "confirm-remove-goods") {
     model.confirmGoodsId = button.dataset.id;
@@ -487,6 +504,17 @@ app.addEventListener("submit", async (event) => {
           unitId: model.state.units[0].id,
         });
       }
+    } else if (form.id === "release-goods") {
+      const amount = data.standardGp === "" ? null : Number(data.standardGp);
+      if (amount != null && !positiveGoods(amount)) {
+        rejectGoods("release-goods", "release-goods", "Release a whole number of GP above zero.");
+      } else {
+        const ok = await save({ type: "release_goods", lotId: data.lotId, standardGp: amount });
+        if (ok) {
+          model.releaseGoodsId = "";
+          paint();
+        }
+      }
     } else if (form.id === "record-order") {
       const [facilityId, suborder] = String(data.orderKey || "").split("|");
       save({
@@ -495,6 +523,8 @@ app.addEventListener("submit", async (event) => {
         suborder,
         startedTurn: data.startedTurn === "" ? null : Number(data.startedTurn),
         note: data.note,
+        lotId: data.lotId || null,
+        standardGp: data.standardGp === "" ? null : Number(data.standardGp),
       });
     } else if (form.id === "take-turn") {
       const ok = await save({ type: "take_turn" });
@@ -571,16 +601,16 @@ function turnCommand(data) {
     const spec = specialById(facility.catalogId);
     const sub = spec?.subs.find((item) => item.id === suborder);
     const count = data[`count-${facility.id}`];
-    orders.push({ facilityId: facility.id, suborder, count: count ? Number(count) : undefined, standardGp: sub?.auto === "storehouse_sell" ? undefined : undefined });
-  }
-  if (data.mode === "orders") {
-    const sell = orders.find((order) => order.suborder === "sell");
-    if (sell) {
-      const lot = model.state.goods.find((item) => item.status === "on_hand" && (item.standardGp - (item.reservedGp || 0)) > 0);
-      if (!lot) throw new RuleError("missing_goods", "Record goods before selling.");
-      sell.lotId = lot.id;
-      sell.standardGp = lot.standardGp - (lot.reservedGp || 0);
+    const order = { facilityId: facility.id, suborder, count: count ? Number(count) : undefined };
+    if (sub?.auto === "storehouse_sell") {
+      order.lotId = data[`sell-lot-${facility.id}`] || null;
+      order.standardGp = data[`sell-gp-${facility.id}`] === "" ? null : Number(data[`sell-gp-${facility.id}`]);
     }
+    if (sub?.auto === "storehouse_buy") {
+      order.goodsName = data[`buy-name-${facility.id}`];
+      order.standardGp = data[`buy-gp-${facility.id}`] === "" ? null : Number(data[`buy-gp-${facility.id}`]);
+    }
+    orders.push(order);
   }
   return { type: "commit_turn", unitId: data.unitId, presence: data.presence, contact: data.contact, mode: data.mode, orders };
 }

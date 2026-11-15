@@ -1,6 +1,7 @@
 import { FESTIVALS, MONTHS, dateForTurn } from "./calendar.js";
-import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, specialById, specialCap } from "./catalog.js";
-import { facilityClosureFacts, orderStartedTurn } from "./rules.js";
+import { BASIC_ROOMS, PREREQ_LABELS, SPECIALS, buyLimitGp, specialById, specialCap } from "./catalog.js";
+import { turnReports } from "./journal.js";
+import { facilityClosureFacts, openSaleCover, orderStartedTurn } from "./rules.js";
 import { markSavingButtons } from "./save-feedback.js";
 import { SECTION_MARK, facilityMark, mark } from "./icons.js";
 
@@ -100,6 +101,7 @@ function shellStart(model) {
     ["rooms", "Rooms"],
     ["people", "People"],
     ["turn", "Turn"],
+    ["journal", "Journal"],
     ["more", "More"],
   ];
   return `<div class="topline"></div><div class="wrap">
@@ -114,7 +116,7 @@ function shellStart(model) {
 }
 
 function shellEnd(model) {
-  const buttons = [["dashboard", "Home"], ["rooms", "Rooms"], ["people", "People"], ["turn", "Turn"], ["more", "More"]];
+  const buttons = [["dashboard", "Home"], ["rooms", "Rooms"], ["people", "People"], ["turn", "Turn"], ["journal", "Journal"], ["more", "More"]];
   return `</div></div>
     <p id="status" class="status" role="status" data-tone="${model.error ? "error" : ""}">${esc(model.error || model.notice || "")}</p>
     ${fanNotice()}
@@ -131,7 +133,8 @@ function view(model) {
   if (model.view === "people") return renderPeople(model);
   if (model.view === "turn") return renderTurn(model);
   if (model.view === "money") return renderMoney(model);
-  if (model.view === "journal") return renderJournal(model);
+  if (model.view === "journal") return renderStewardJournal(model);
+  if (model.view === "backup") return renderBackup(model);
   if (model.view === "settings") return renderSettings(model);
   if (model.view === "record") return renderRecord(model);
   if (model.view === "import") return renderImport(model);
@@ -477,6 +480,21 @@ function calendarFields(prefix, anchor) {
     <label for="${prefix}-year">Year, if you know it <input id="${prefix}-year" name="year" inputmode="numeric" value="${anchor?.year ?? ""}" placeholder="Leave blank if the year is unknown"></label>`;
 }
 
+function tradeFields(state, facility) {
+  if (facility.catalogId !== "storehouse") return "";
+  const unit = state.units.find((item) => item.id === facility.unitId) || state.units[0];
+  const limit = buyLimitGp(unit?.level || 5);
+  const lots = state.goods.filter((lot) => lot.status === "on_hand" && lot.standardGp - (lot.reservedGp || 0) > 0);
+  return `<label>Lot to sell <select name="sell-lot-${esc(facility.id)}"><option value="">Choose goods</option>${lots.map((lot) => {
+    const free = lot.standardGp - (lot.reservedGp || 0);
+    return `<option value="${esc(lot.id)}">${esc(lot.name?.trim() ? lot.name : "Unnamed goods")} · ${free} GP free</option>`;
+  }).join("")}</select></label>
+    <label>List price to sell, in GP <input name="sell-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Only the free amount"></label>
+    <label>Goods to buy <input name="buy-name-${esc(facility.id)}" maxlength="80" placeholder="Name the goods"></label>
+    <label>List price to buy, in GP <input name="buy-gp-${esc(facility.id)}" inputmode="numeric" placeholder="Up to ${limit}"></label>
+    <p class="muted">This level can buy up to ${limit} GP. Buying charges that price when the order is saved, and only if the cash on hand is known and enough. A sale pays on the next Bastion turn.</p>`;
+}
+
 function orderChoices(facility) {
   const spec = specialById(facility.catalogId);
   return (spec?.subs || []).map((sub) => `<option value="${sub.id}">${esc(sub.label)}${sub.turns == null ? "" : ` · ${sub.turns} turn${sub.turns === 1 ? "" : "s"}`}</option>`).join("");
@@ -514,6 +532,7 @@ function renderTurn(model) {
       ${specials.map((facility) => `<fieldset><legend>${facilityMark(specialById(facility.catalogId))}<span>${esc(facility.name)}${facility.status === "shutdown" ? " (shut this turn)" : ""}</span></legend>
           <label>Order <select name="order-${facility.id}"><option value="">No order</option>${orderChoices(facility)}</select></label>
           <label>How many, if the order asks <input name="count-${facility.id}" inputmode="numeric" placeholder="1 to 4 for defenders"></label>
+          ${tradeFields(state, facility)}
         </fieldset>`).join("")}
       <button class="primary" type="submit">Commit orders</button>
     </form>` : "";
@@ -544,13 +563,29 @@ function formAlert(id, message) {
 function goodsRows(model) {
   const state = model.state;
   if (!state.goods.length) return "<li>No goods recorded.</li>";
+  const dm = model.mode !== "remote" || model.role === "dm";
   return state.goods.map((lot) => {
     const label = lot.name?.trim() ? lot.name : "Unnamed goods";
+    const reserved = lot.reservedGp || 0;
+    const free = Math.max(0, lot.standardGp - reserved);
+    const covered = openSaleCover(state, lot.id);
+    const releasable = Math.max(0, reserved - covered);
+    const orphaned = releasable > 0;
     const confirming = model.confirmGoodsId === lot.id;
+    const releasing = model.releaseGoodsId === lot.id;
     const noteId = `remove-note-${lot.id}`;
-    return `<li class="goods-row"><span>${esc(label)} · list ${lot.standardGp} GP · ${esc(lot.status)}${lot.reservedGp ? ` · reserved ${lot.reservedGp}` : ""}</span>${confirming
+    const releaseId = `release-note-${lot.id}`;
+    const holding = reserved
+      ? (orphaned ? ` · committed ${reserved} GP with no open sale` : ` · committed ${reserved} GP to an open sale`)
+      : "";
+    const release = !dm || reserved <= 0 ? "" : releasing
+      ? `<form id="release-goods" class="confirm-row"><span id="${esc(releaseId)}">Release committed goods? Cash will not change. An open sale stays linked.</span><input type="hidden" name="lotId" value="${esc(lot.id)}"><label>Amount to release, in GP <input name="standardGp" inputmode="numeric" value="${releasable}" aria-describedby="${esc(releaseId)}"></label><button type="submit">Release</button><button type="button" data-action="cancel-release-goods">Cancel</button></form>`
+      : `<button type="button" data-action="confirm-release-goods" data-id="${esc(lot.id)}">Release</button>`;
+    const remove = confirming
       ? `<span class="confirm-row"><span id="${esc(noteId)}">Remove this entry? Only the DM can do this, and cash will not change.</span><button type="button" data-action="remove-goods" data-id="${esc(lot.id)}" aria-describedby="${esc(noteId)}">Remove these goods</button><button type="button" data-action="cancel-remove-goods">Cancel</button></span>`
-      : `<button type="button" data-action="confirm-remove-goods" data-id="${esc(lot.id)}">Remove</button>`}</li>`;
+      : `<button type="button" data-action="confirm-remove-goods" data-id="${esc(lot.id)}">Remove</button>`;
+    const status = lot.status === "on_hand" ? "on hand" : (lot.status === "sold" ? "sold" : lot.status);
+    return `<li class="goods-row"><span>${esc(label)} · list ${lot.standardGp} GP · free ${free} GP${holding} · ${esc(status)}</span>${release}${remove}</li>`;
   }).join("");
 }
 
@@ -572,11 +607,32 @@ function renderMoney(model) {
     <ul>${state.ledger.slice(-8).reverse().map((entry) => `<li>${entry.gp} GP · ${esc(entry.reason)}</li>`).join("") || "<li>No payments yet.</li>"}</ul>`;
 }
 
-function renderJournal(model) {
+function renderBackup(model) {
   const lines = model.state.audit.slice().reverse().slice(0, 40);
-  return `<h2 class="with-mark">${mark("thread")} Journal</h2><p class="muted">Each saved change is listed. Overrides keep their reason.</p>
+  return `<h2 class="with-mark">${mark("seal")} Backup</h2><p class="muted">Each saved change is listed. Overrides keep their reason.</p>
     <ol>${lines.map((entry) => `<li><strong>${esc(entry.summary)}</strong><br><span class="muted">${esc(entry.actorEmail || entry.actorRole || "")} ${entry.reason ? `· ${esc(entry.reason)}` : ""}</span></li>`).join("") || "<li>No entries yet.</li>"}</ol>
     <button type="button" data-action="export">Download JSON backup</button>`;
+}
+
+function renderStewardJournal(model) {
+  const reports = turnReports(model.state);
+  const cards = reports.map((report) => {
+    const open = String(model.journalTurn) === String(report.turn);
+    const panelId = `journal-panel-${report.turn}`;
+    return `<article class="panel journal-card">
+      <button type="button" class="journal-turn" aria-expanded="${open ? "true" : "false"}" aria-controls="${panelId}" data-action="toggle-journal" data-turn="${esc(report.turn)}">
+        <span>Turn: ${esc(report.turn)}</span>
+        <span>Date: ${esc(report.date)}</span>
+      </button>
+      <div id="${panelId}" class="journal-brief" ${open ? "" : "hidden"}>
+        <p>${esc(report.brief)}</p>
+        ${report.footnote ? `<p class="muted">${esc(report.footnote)}</p>` : ""}
+      </div>
+    </article>`;
+  }).join("");
+  return `<h2 class="with-mark">${mark("thread")} Journal</h2>
+    <p class="muted">Reports from the record, one Bastion turn at a time. Nothing here changes the estate.</p>
+    <div class="journal-list">${cards || `<p class="muted">No turns have been recorded yet.</p>`}</div>`;
 }
 
 function renderSettings(model) {
@@ -654,12 +710,14 @@ function renderRecord(model) {
       <label for="commit-note">What the goods are tied up in <input id="commit-note" name="note" maxlength="240" placeholder="Trade sell already underway"></label>
       ${formAlert("commit-goods-error", model.formError?.form === "record-goods" ? model.formError.message : "")}
       <button class="primary" type="submit">Mark goods committed</button>
-      <p class="muted">Example: 500 GP of goods already in a sell order. A new lot needs a name and a price above zero. This reserves them. It does not pay the sale.</p>
+      <p class="muted">This only reserves goods. It is not a completed sale, and it does not pay anyone. A sale that should pay on the next turn is recorded under Order already underway.</p>
     </form>
     <form id="record-order" class="panel stack" style="margin-top:14px">
       <h3>Order already underway</h3>
       ${specials.length ? `<label>Facility and order <select id="record-order-key" name="orderKey">${orderOptions}</select></label>
         <label for="order-started">Bastion turn it started <input id="order-started" name="startedTurn" inputmode="numeric" value="${state.clock.turn ?? ""}" placeholder="Leave blank if you do not know"></label>
+        <label for="record-sale-lot">Lot, for a Storehouse sale <select id="record-sale-lot" name="lotId"><option value="">Not a sale</option>${state.goods.filter((lot) => lot.status === "on_hand").map((lot) => `<option value="${esc(lot.id)}">${esc(lot.name?.trim() ? lot.name : "Unnamed goods")} · ${lot.standardGp - (lot.reservedGp || 0)} GP free${lot.reservedGp ? `, ${lot.reservedGp} committed` : ""}</option>`).join("")}</select></label>
+        <label for="record-sale-gp">List price of that sale, in GP <input id="record-sale-gp" name="standardGp" inputmode="numeric" placeholder="Required for a Storehouse sale"></label>
         <label>Note <input id="order-note" name="note" maxlength="240"></label>
         <button class="primary" type="submit">Mark order in progress</button>
         <p class="muted">Use the same turn number as Settings. Leave it blank if you do not know it. Unknown stays unknown. This records the current order. It does not recruit, spend, or finish the work.</p>` : `<p class="muted">Add a special facility before recording an order.</p>`}
@@ -707,7 +765,8 @@ function renderHelp() {
 function renderMore() {
   return `<h2 class="with-mark">${mark("pips")} More</h2><div class="stack">
     <button type="button" data-action="nav" data-view="money">${mark("coin")}<span>Treasury</span></button>
-    <button type="button" data-action="nav" data-view="journal">${mark("thread")}<span>Journal and backup</span></button>
+    <button type="button" data-action="nav" data-view="journal">${mark("thread")}<span>Journal</span></button>
+    <button type="button" data-action="nav" data-view="backup">${mark("seal")}<span>Backup</span></button>
     <button type="button" data-action="nav" data-view="settings">${mark("key")}<span>Settings</span></button>
     <button type="button" data-action="nav" data-view="record">${mark("seal")}<span>Record existing state</span></button>
     <button type="button" data-action="nav" data-view="import">${mark("card")}<span>Review import</span></button>

@@ -264,7 +264,8 @@ begin
   if not exists (select 1 from jsonb_array_elements(doc->'goods') elem where elem->>'name' = 'Timber' and (elem->>'reservedGp')::int = 500) then
     perform public._cmd_fail('goods were not reserved');
   end if;
-  out := public.apply_command(eid, rev, 'running', jsonb_build_object('type', 'record_order', 'facilityId', store_id, 'suborder', 'sell', 'startedTurn', 2, 'note', 'Already listed'));
+  select elem->>'id' into lot_id from jsonb_array_elements(doc->'goods') elem where elem->>'name' = 'Timber' limit 1;
+  out := public.apply_command(eid, rev, 'running', jsonb_build_object('type', 'record_order', 'facilityId', store_id, 'suborder', 'sell', 'startedTurn', 2, 'note', 'Already listed', 'lotId', lot_id, 'standardGp', 500));
   rev := (out->>'revision')::bigint;
   doc := out->'document';
   if not exists (
@@ -272,6 +273,15 @@ begin
     where elem->>'facilityId' = store_id and elem->>'status' = 'in_progress' and coalesce((elem->>'recorded')::boolean, false) and (elem->>'startedTurn')::int = 2 and not (elem ? 'startedDay')
   ) then
     perform public._cmd_fail('in-progress order');
+  end if;
+  if not exists (
+    select 1 from jsonb_array_elements(doc->'tasks') elem
+    where elem->>'auto' = 'storehouse_sell' and elem->>'lotId' = lot_id and elem->>'status' = 'open' and (elem->>'standardGp')::int = 500 and (elem->>'proceeds')::int = 750 and (elem->>'dueTurn')::int = 3
+  ) or not exists (
+    select 1 from jsonb_array_elements(doc->'goods') elem
+    where elem->>'id' = lot_id and (elem->>'reservedGp')::int = 500
+  ) then
+    perform public._cmd_fail('recorded sale did not link the lot');
   end if;
   if (doc#>>'{finance,cashGp}')::int <> before_rev then
     perform public._cmd_fail('recording an order moved cash');

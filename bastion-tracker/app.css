@@ -238,11 +238,21 @@ textarea { min-height: 120px; }
   font-size: 12px;
   line-height: 1.45;
 }
+.journal-list { display: grid; gap: 10px; }
+.journal-turn {
+  width: 100%;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  text-align: left;
+  background: transparent;
+}
+.journal-brief[hidden] { display: none; }
 .bottom-nav {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 4px;
   padding: 8px;
   background: #f6f0e4;

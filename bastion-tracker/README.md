@@ -19,12 +19,12 @@ The publishable key is not a JWT. The tracker sends it as the `apikey` header. B
 
 ## What you still do
 
-1. After this change is merged, run `supabase/migrations/007_bastion_turns.sql` once in the Supabase SQL editor. Do not run `001` through `006` again. `007` does not change cash. It switches the saved record onto Bastion turns, leaves a start turn unknown when the old number cannot be trusted, and lets any signed-in member of the estate set the in-game date.
+1. After this change is merged, run `supabase/migrations/008_release_goods.sql` once in the Supabase SQL editor. Do not run `001` through `007` again. `008` does not change cash and does not rewrite the saved estate. It lets the DM release goods that were reserved without an open sale, and it lets a Storehouse sale already underway point at a lot so the next turn pays that sale once.
 2. Open the tracker and sign in with the DM account. The first sign-in creates your estate and makes you its DM. Until you sign in, the page stays **Not connected**.
 3. Add other people in the Supabase dashboard (Authentication → Users). Use the same email they will type here. Public signup will not create accounts.
 4. Sign in as the DM and create an invite code for that email and role. Give them the code yourself. They sign in, then accept the code.
 5. Set the Bastion turn and opening cash only when you know them. Unknown stays unknown, including a blank turn. It is not treated as turn 0, and cash is not treated as zero. The DM sets the turn counter. Any signed-in member of the estate can set the calendar anchor, or re-anchor the current turn when the party lost or gained time. The date shown next to a turn is derived from that anchor. A session date is only a real-world note.
-6. Defenders already housed, outstanding loans, goods already committed to an order, and an order that is already running are entered from More → Record existing state. That screen does not run a turn or move cash.
+6. Defenders already housed, outstanding loans, goods already committed, and an order that is already running are entered from More → Record existing state. Marking goods committed reserves them. It is not a completed sale and it does not pay anyone. A Storehouse sale already underway needs the lot and the list price; that creates the sale that pays on the next Bastion turn, still without paying now. Goods reserved with no open sale can be released from Treasury. That does not move cash. The Journal page is a reading of recorded turns. Backup keeps the plain list and the JSON download.
 7. Keep the old Notion page until you decide the tracker is the record you want. This app does not switch that for you.
 
 Publishing the site is the existing Pages workflow. A deploy log shows the files are on the web. The github.io host may still show Chrome's "Dangerous site" warning. Do not ask anyone to bypass it, and do not treat the address as ready to share until that warning is gone.

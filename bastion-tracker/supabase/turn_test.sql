@@ -131,4 +131,39 @@ set role authenticated;
 select set_config('request.jwt.claim.sub', 'e3333333-3333-3333-3333-333333333333', false);
 select public.accept_invite(:'turn_editor_token');
 select public._expect_forbidden(:'turn_estate'::uuid, '{"type":"set_order_start","orderId":"missing","unknown":true}'::jsonb, 'editor-order-start');
+select public._expect_forbidden(:'turn_estate'::uuid, '{"type":"release_goods","lotId":"missing"}'::jsonb, 'editor-release');
+
+select set_config('request.jwt.claim.sub', 'e1111111-1111-1111-1111-111111111111', false);
+select revision as rel_rev from public.estates where id = :'turn_estate'::uuid \gset
+select public.apply_command(:'turn_estate'::uuid, :rel_rev, 'rel-store', '{"type":"add_special","unitId":"unit-party","catalogId":"storehouse"}'::jsonb)->>'revision' as rel_rev \gset
+select public.apply_command(:'turn_estate'::uuid, :rel_rev, 'rel-herbs', '{"type":"reserve_goods","name":"Herbs","standardGp":500,"note":"Held aside"}'::jsonb)->>'revision' as rel_rev \gset
+select (document->'goods'->-1->>'id') as herb_id from public.estates where id = :'turn_estate'::uuid \gset
+select public.apply_command(:'turn_estate'::uuid, :rel_rev, 'rel-part', jsonb_build_object('type', 'release_goods', 'lotId', :'herb_id', 'standardGp', 200))->>'revision' as rel_rev \gset
+select public._assert(
+  (select (document#>>'{finance,cashGp}')::int from public.estates where id = :'turn_estate'::uuid) = 40
+  and (select (document->'goods'->-1->>'reservedGp')::int from public.estates where id = :'turn_estate'::uuid) = 300
+  and (select document#>>'{audit,-1,type}' from public.estates where id = :'turn_estate'::uuid) = 'release_goods'
+  and (select document#>>'{audit,-1,actorRole}' from public.estates where id = :'turn_estate'::uuid) = 'dm'
+  and (select document#>>'{audit,-1,actorEmail}' from public.estates where id = :'turn_estate'::uuid) = 'turn-dm@example.com',
+  'partial_release'
+);
+select (document->'facilities'->-1->>'id') as rel_store from public.estates where id = :'turn_estate'::uuid \gset
+select public.apply_command(:'turn_estate'::uuid, :rel_rev, 'rel-sale', jsonb_build_object('type', 'record_order', 'facilityId', :'rel_store', 'suborder', 'sell', 'lotId', :'herb_id', 'standardGp', 300, 'startedTurn', 1))->>'revision' as rel_rev \gset
+select public._assert(
+  (select (document#>>'{finance,cashGp}')::int from public.estates where id = :'turn_estate'::uuid) = 40
+  and (select (document->'goods'->-1->>'reservedGp')::int from public.estates where id = :'turn_estate'::uuid) = 300
+  and (select (document->'tasks'->-1->>'proceeds')::int from public.estates where id = :'turn_estate'::uuid) = 330
+  and (select document->'tasks'->-1->>'lotId' from public.estates where id = :'turn_estate'::uuid) = :'herb_id',
+  'linked_recorded_sale'
+);
+select set_config('bastion.estate', :'turn_estate', false);
+select set_config('bastion.herb', :'herb_id', false);
+do $$
+begin
+  perform public.apply_command(current_setting('bastion.estate')::uuid, null, 'rel-linked', jsonb_build_object('type', 'release_goods', 'lotId', current_setting('bastion.herb')));
+  raise exception 'linked_release_allowed';
+exception
+  when invalid_parameter_value then
+    if SQLERRM not like '%open Storehouse sale%' then raise; end if;
+end $$;
 reset role;
