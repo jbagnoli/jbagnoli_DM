@@ -288,8 +288,8 @@ test("setting a level directly does not grant replacements", () => {
   assert.equal(direct.units[0].level, 9);
   assert.equal(direct.units[0].replacementBank, 1);
   const granted = apply(state, { type: "set_level", unitId: "unit-party", level: 9, grantReplacements: true }).state;
-  assert.equal(granted.units[0].replacementBank, 4);
-  assert.throws(() => apply(direct, { type: "set_level", unitId: "unit-party", level: 4 }), (error) => error.code === "cap");
+  assert.equal(granted.units[0].replacementBank, 1);
+  assert.throws(() => apply(direct, { type: "set_level", unitId: "unit-party", level: 4 }), (error) => error.code === "bad_level");
   let high = apply(direct, { type: "set_level", unitId: "unit-party", level: 13 }).state;
   high = add(high, "archive");
   assert.throws(() => apply(high, { type: "set_level", unitId: "unit-party", level: 9 }), (error) => error.code === "level_gate");
@@ -321,7 +321,7 @@ test("settings save is one change and keeps the previous record when refused", (
     name: "Renamed Hall",
     unitId: "unit-party",
     level: 1,
-  }), (error) => error.code === "cap");
+  }), (error) => error.code === "bad_level");
   assert.equal(saved.name, "Practice Hall");
   assert.equal(saved.units[0].level, 8);
   assert.equal(saved.clock.turn, 4);
@@ -402,9 +402,15 @@ test("settings and the DM record screen are reachable", () => {
   const settings = render({ mode: "sandbox", view: "settings", state, error: "", notice: "", configured: true, serviceRole: false });
   assert.match(settings, /<select id="level"/);
   assert.doesNotMatch(settings, /<input id="level"/);
-  for (let level = 1; level <= 20; level += 1) assert.match(settings, new RegExp(`value="${level}"`));
+  const levelSelect = settings.match(/<select id="level"[\s\S]*?<\/select>/)[0];
+  for (let level = 5; level <= 20; level += 1) assert.match(levelSelect, new RegExp(`value="${level}"`));
+  assert.doesNotMatch(levelSelect, /value="4"/);
   assert.match(settings, /Only the DM can save the turn counter/);
-  assert.match(settings, /for="session-label">Session date </);
+  assert.doesNotMatch(settings, /session-label|Session date|grant-replacements|real-world/);
+  assert.match(settings, /Tenday \(FR\)/);
+  assert.match(settings, /7 days \(DMG\)/);
+  assert.match(settings, /Skip festival days/);
+  assert.match(settings, /class="check-line"/);
   assert.match(settings, /for="turn-number">Bastion turn /);
   assert.match(settings, /In-game date anchor/);
   const record = render({ mode: "sandbox", view: "record", state, error: "", notice: "", configured: true, serviceRole: false });
@@ -861,7 +867,7 @@ test("room and people screens keep DM corrections distinct from the published re
 test("the server handles every command the client can send", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const rules = await readFile(path.join(root, "js/rules.js"), "utf8");
-  const migration = await readFile(path.join(root, "supabase/migrations/009_tenday_defenders.sql"), "utf8");
+  const migration = await readFile(path.join(root, "supabase/migrations/010_journal_level.sql"), "utf8");
   const turns = await readFile(path.join(root, "supabase/migrations/007_bastion_turns.sql"), "utf8");
   const rooms = await readFile(path.join(root, "supabase/migrations/006_manage_rooms_people.sql"), "utf8");
   const prior = await readFile(path.join(root, "supabase/migrations/005_remove_person.sql"), "utf8");
@@ -1088,41 +1094,47 @@ test("the journal groups turns and leaves the date unset until an anchor exists"
   }).state;
   state = apply(state, { type: "roster_save", person: { name: "Pell Ash", category: "household", role: "Steward", unitId: "unit-party" } }).state;
   assert.equal(journalDateLabel(state, 1), "date not set");
+  state.audit.push({ type: "roster_save", turn: 30, summary: "Named Pell Ash" });
   let reports = turnReports(state);
   assert.equal(reports.length, 1);
   assert.equal(reports[0].turn, 1);
   assert.equal(reports[0].date, "date not set");
-  assert.match(reports[0].brief, /took on 2 new defenders/);
-  assert.doesNotMatch(reports[0].brief, /Pell Ash/);
-  assert.match(reports[0].footnote, /Pell Ash/);
+  assert.match(reports[0].lines.join(" "), /Barrack: recruit 2/);
+  assert.doesNotMatch(reports[0].lines.join(" "), /Pell Ash/);
   state = apply(state, { type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: 1495 }).state;
   assert.equal(journalDateLabel(state, 1), "10 Tarsakh, 1495 DR");
+  assert.equal(state.turns[0].date, "date not set");
   state = apply(state, { type: "take_turn" }).state;
   state = apply(state, { type: "commit_turn", unitId: "unit-party", presence: "present", mode: "no_orders" }).state;
   reports = turnReports(state);
   assert.deepEqual(reports.map((report) => report.turn), [1, 2]);
+  assert.equal(reports[0].date, "date not set");
   assert.equal(reports[1].date, "20 Tarsakh, 1495 DR");
-  assert.match(reports[1].brief, /no orders were issued/);
+  assert.match(reports[1].lines.join(" "), /No orders/);
   const closed = render({ mode: "remote", role: "reader", view: "journal", state, journalTurn: "", error: "", notice: "", configured: true, serviceRole: false });
   assert.match(closed, /aria-expanded="false"/);
   assert.match(closed, /Turn: 1/);
-  assert.match(closed, /Date: 10 Tarsakh, 1495 DR/);
+  assert.match(closed, /Date: date not set/);
+  assert.doesNotMatch(closed, /Turn: 30/);
   assert.match(closed, /hidden/);
   const open = render({ mode: "remote", role: "reader", view: "journal", state, journalTurn: 1, error: "", notice: "", configured: true, serviceRole: false });
   assert.match(open, /aria-expanded="true"/);
-  assert.match(open, /took on 2 new defenders/);
+  assert.match(open, /Barrack: recruit 2/);
+  assert.doesNotMatch(open, /Pell Ash/);
   const backup = render({ mode: "sandbox", view: "backup", state, error: "", notice: "", configured: false, serviceRole: false });
   assert.match(backup, /Download JSON backup/);
   assert.match(backup, /Backup</);
 });
 
-test("a forward turn and a re-anchor rewrite the session label", () => {
+test("the home page shows only the turn line", () => {
   let state = party();
+  state.clock.label = "30 Tarsakh";
   state = apply(state, { type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: 1495 }).state;
-  assert.equal(state.clock.label, "10 Tarsakh, 1495 DR");
   state = apply(state, { type: "take_turn" }).state;
   assert.equal(state.clock.turn, 2);
-  assert.equal(state.clock.label, "20 Tarsakh, 1495 DR");
+  const home = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(home, /Turn 2 · 20 Tarsakh, 1495 DR/);
+  assert.doesNotMatch(home, /Session date|30 Tarsakh/);
 });
 
 test("loan payments split treasury and personal treasure and cannot go below zero", () => {
@@ -1161,7 +1173,8 @@ test("turn notes are capped at 600 characters and a recorded order can be closed
   assert.throws(() => apply(state, { type: "commit_turn", unitId: "unit-party", presence: "present", mode: "no_orders", notes: "x".repeat(601) }), (error) => error.code === "notes_too_long");
   const reports = turnReports(state);
   const card = reports.find((item) => item.turn === state.clock.turn);
-  assert.match(card.brief, /Message spell/);
+  assert.match(card.lines.join(" "), /No orders/);
+  assert.doesNotMatch(card.lines.join(" "), /Message spell/);
   assert.match(card.notes, /yard was quiet/);
   const page = render({ mode: "sandbox", view: "turn", state, turnGuide: { phase: "orders" }, orderChoice: { [store.id]: "sell" }, error: "", notice: "", configured: false, serviceRole: false });
   assert.match(page, /Lot to sell/);
@@ -1198,12 +1211,90 @@ test("generic defenders fold into the barrack count and named defenders stay", (
   assert.equal(again.roster.length, 1);
 });
 
+test("a level below 5 is refused even with no special facilities", () => {
+  const state = party();
+  assert.equal(state.facilities.length, 0);
+  assert.throws(() => apply(state, { type: "set_level", unitId: "unit-party", level: 4 }), (error) => error.code === "bad_level");
+  assert.equal(state.units[0].level, 5);
+});
+
+test("lowering the level names orders it would make illegal and still saves", () => {
+  let state = withCash(add(add(party(), "smithy"), "storehouse"), 4000);
+  state = apply(state, { type: "set_level", unitId: "unit-party", level: 13 }).state;
+  const smithy = state.facilities.find((item) => item.catalogId === "smithy");
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  state = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [
+      { facilityId: smithy.id, suborder: "craft_magic", turns: 2, gp: 0 },
+      { facilityId: store.id, suborder: "buy", goodsName: "Ingots", standardGp: 3000 },
+    ],
+  }).state;
+  const lowered = apply(state, { type: "set_level", unitId: "unit-party", level: 8 });
+  assert.equal(lowered.state.units[0].level, 8);
+  assert.match(lowered.state.audit.at(-1).summary, /magic-item crafting needs level 9/);
+  assert.match(lowered.state.audit.at(-1).summary, /3000 GP is over the 500 GP limit/);
+  const page = render({ mode: "sandbox", view: "settings", state, levelPreview: 8, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(page, /id="level-warning"/);
+  assert.match(page, /magic-item crafting/);
+  assert.match(page, /3000 GP/);
+});
+
+test("a stable sale pays 20 percent over the list price on the next turn", () => {
+  let state = withCash(party(), 500);
+  state = apply(state, { type: "set_level", unitId: "unit-party", level: 9 }).state;
+  state = add(state, "stable");
+  const stable = state.facilities.find((item) => item.catalogId === "stable");
+  state = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [{ facilityId: stable.id, suborder: "trade", side: "sell", goodsName: "riding horse", standardGp: 75 }],
+  }).state;
+  assert.equal(state.finance.cashGp, 500);
+  assert.equal(state.tasks[0].proceeds, 90);
+  const lines = turnReports(state)[0].lines.join(" ");
+  assert.match(lines, /Stable: sell 75 gp of riding horse/);
+  state = apply(state, { type: "take_turn" }).state;
+  assert.equal(state.finance.cashGp, 590);
+  const bought = apply(state, {
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    orders: [{ facilityId: stable.id, suborder: "trade", side: "buy", goodsName: "pony", standardGp: 30 }],
+  }).state;
+  assert.equal(bought.finance.cashGp, 560);
+});
+
+test("theater and teleportation circle show the die and the spell level", () => {
+  let state = apply(party(), { type: "set_level", unitId: "unit-party", level: 17 }).state;
+  state = add(add(state, "theater"), "teleportation_circle");
+  const html = render({ mode: "sandbox", view: "rooms", state, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(html, /Performance die: d10/);
+  assert.match(html, /Teleportation Circle: 8th level/);
+  let earlier = apply(party(), { type: "set_level", unitId: "unit-party", level: 13 }).state;
+  earlier = add(earlier, "theater");
+  const mid = render({ mode: "sandbox", view: "rooms", state: earlier, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(mid, /Performance die: d8/);
+  earlier = apply(party(), { type: "set_level", unitId: "unit-party", level: 9 }).state;
+  earlier = add(add(earlier, "theater"), "teleportation_circle");
+  const low = render({ mode: "sandbox", view: "rooms", state: earlier, error: "", notice: "", configured: false, serviceRole: false });
+  assert.match(low, /Performance die: d6/);
+  assert.match(low, /Teleportation Circle: 4th level/);
+});
+
 test("the tracker no longer labels game time in days", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const names = ["rules.js", "render.js", "main.js", "catalog.js", "demo.js"];
   const banned = [/startedDay/, /cadenceDays/, /advance_days/, /dueOrdinal/, /in-game day/i, /Day number/, /\b\d+ days\b/, /\b\d+-day\b/];
   for (const name of names) {
-    const text = await readFile(path.join(root, "js", name), "utf8");
+    const raw = await readFile(path.join(root, "js", name), "utf8");
+    const text = name === "render.js" ? raw.replaceAll("7 days (DMG)", "") : raw;
     for (const pattern of banned) assert.equal(pattern.test(text), false, `${name} matches ${pattern}`);
   }
   const readme = await readFile(path.join(root, "README.md"), "utf8");

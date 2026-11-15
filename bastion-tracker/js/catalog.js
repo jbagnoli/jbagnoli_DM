@@ -262,7 +262,7 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Trade",
     source: "Bastions, Stable",
-    hint: "Holds 3 Large creatures, or two Medium ones in a Large space. Buying or selling takes 1 turn. Sale bonus is 20% at level 9, 50% at 13, and 100% at 17. Mount prices come from outside this chapter.",
+    hint: "Holds 3 Large creatures, or two Medium ones in a Large space. Buying or selling takes 1 turn. A sale pays 20 percent over the list price from level 9 on, and the tracker adds that itself. Mount prices come from outside this chapter.",
     automation: "partial",
     enlargeGp: 2000,
     vastCapacityLarge: 6,
@@ -278,9 +278,9 @@ export const SPECIALS = [
     hirelings: 1,
     family: "Recruit",
     source: "Bastions, Teleportation Circle",
-    hint: "An invited caster arrives only on an even roll. They stay 2 turns or until one spell, and they leave if the bastion is attacked. Material costs are paid separately.",
+    hint: "An invited caster arrives only on an even roll. They stay 2 turns or until one spell, and they leave if the bastion is attacked. Material costs are paid separately. The circle is a 4th-level spell, or an 8th-level spell from level 17.",
     automation: "partial",
-    subs: [order("invite", "Invite a spellcaster", 0, manual, "Roll any die. Odd declines. Even accepts. Record the spell limit yourself.")],
+    subs: [order("invite", "Invite a spellcaster", 0, manual, "Roll any die. Odd declines. Even accepts. The spell level is shown on the room.")],
   },
   {
     id: "theater",
@@ -292,7 +292,7 @@ export const SPECIALS = [
     hirelings: 4,
     family: "Empower",
     source: "Bastions, Theater",
-    hint: "Rehearsal is 2 turns, then a show of at least 1 turn. The performance die, if earned, does not stack.",
+    hint: "Rehearsal is 2 turns, then a show of at least 1 turn. The performance die is a d6, a d8 from level 13, and a d10 from level 17. It does not stack.",
     automation: manual,
     subs: [
       order("rehearse", "Rehearse", 2, manual),
@@ -530,4 +530,18 @@ export function sellMarginBps(level) {
 
 export function saleProceeds(standardGp, level) {
   return Math.round((standardGp * (10000 + sellMarginBps(level))) / 10000);
+}
+
+export function stableSaleProceeds(standardGp) {
+  return Math.round(standardGp * 1.2);
+}
+
+export function theaterDie(level) {
+  if (level >= 17) return "d10";
+  if (level >= 13) return "d8";
+  return "d6";
+}
+
+export function teleportSpellLevel(level) {
+  return level >= 17 ? "8th" : "4th";
 }

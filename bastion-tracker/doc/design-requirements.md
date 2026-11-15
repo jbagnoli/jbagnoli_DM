@@ -1,6 +1,6 @@
 # Bastion Tracker design requirements
 
-This is the design of the Bastion Tracker as it stands after the work through migration 009. It is written for the DM. It describes behavior, not a recipe for changing the database. Decisions are also kept as short records in `doc/adr/`. A later design change adds another one of those records.
+This is the design of the Bastion Tracker as it stands after the work through migration 010. It is written for the DM. It describes behavior, not a recipe for changing the database. Decisions are also kept as short records in `doc/adr/`. A later design change adds another one of those records.
 
 **Implemented** means the tracker already does this. **Planned** means John has agreed it, and it is not built yet.
 
@@ -22,7 +22,7 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** Unknown stays unknown. A blank opening cash is not zero. A blank Bastion turn is not turn 0. A blank in-game date is not invented.
 
-**Implemented.** Ownership is set on purpose. Raising the recorded level does not grant a pile of facility swaps for levels already passed. One published replacement is added only for each level actually gained after tracking starts, and only when that box is checked. Splitting off another owner asks for a confirmation, adds a new cap, and copies no rooms.
+**Implemented.** Ownership is set on purpose. Saving a level is on the honor system. It does not add replacements and it does not record a reason. A level below 5 is refused. The save is also refused, and nothing is written, when the special-facility cap or a facility’s own minimum level does not fit. The caps are 2, 4, 5, and 6 special facilities at levels 5, 9, 13, and 17. If the rooms still fit but an order already underway would be illegal at the new level, the save still happens and names that order. Raising the level with the level-up action still adds one replacement for each level gained. Splitting off another owner asks for a confirmation, adds a new cap, and copies no rooms.
 
 **Implemented.** Screens use real buttons and labeled fields, and they work on a phone as well as a desk. The Journal turn list is a set of buttons that say whether they are open.
 
@@ -32,15 +32,15 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 ## Turns and dates
 
-**Implemented.** Bastion turns are the only game-time counter. Stored fields, the screen, order lengths, finish times, and the journal all use turns. A real-world session note, the in-game date, and the estate’s save number are three different things. The save number only exists so two people do not overwrite each other.
+**Implemented.** Bastion turns are the only game-time counter. Stored fields, the screen, order lengths, finish times, and the journal all use turns. The in-game date and the estate’s save number are different things. There is no separate session date. The save number only exists so two people do not overwrite each other.
 
 **Implemented.** The in-game date is derived from an anchor, for example “turn 1 is 10 Tarsakh.” Each later turn adds the chosen turn length. The default is a ten-day tenday, and festival days are skipped so they do not use up one of those days. Settings can switch to the shorter chapter length, and can count festival days instead of skipping them. The calendar is the Calendar of Harptos: twelve months of thirty days, with the festivals that sit between months, including the Feast of the Moon, and Shieldmeet in a leap year. If the year is blank, Shieldmeet is not inserted, and the screen says so when a span crosses Midsummer. “Tarkesh” is accepted as Tarsakh. If no anchor is set, no date is shown. Changing the length does not move an anchor that is already saved.
 
-**Implemented.** Any signed-in member of the estate can set the anchor or re-anchor the current turn, including a reader. Anonymous visitors cannot. A signed-in user who is not a member of that estate cannot. A re-anchor replaces the anchor at the current turn and is written in the journal with who did it and why. It does not create a second counter, and it does not move the turn number.
+**Implemented.** Any signed-in member of the estate can set the anchor or re-anchor the current turn, including a reader. Anonymous visitors cannot. A signed-in user who is not a member of that estate cannot. A re-anchor replaces the anchor at the current turn. Who did it, and why, stays on the Backup list. It does not create a second counter, and it does not move the turn number. A date already stored on a committed turn is left as it was.
 
 **Implemented.** Loans appear on the home page under What is due, with the lender and the amount still owed.
 
-**Implemented.** During a turn the DM can record a payment on each loan. One amount comes from the treasury and is deducted from tracked cash, refused if cash is unknown or too small. The other amount is personal treasure. It reduces the loan and is not tracked as cash. The loan cannot go below zero. The payment is journaled.
+**Implemented.** During a turn the DM can record a payment on each loan. One amount comes from the treasury and is deducted from tracked cash, refused if cash is unknown or too small. The other amount is personal treasure. It reduces the loan and is not tracked as cash. The loan cannot go below zero. The payment is on the Backup list.
 
 **Implemented.** The turn form has a note of at most 600 characters. A longer note is refused on the page and in the saved command. Anyone who can take the turn can write it. The Journal shows it on that turn.
 
@@ -53,9 +53,9 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** An order issued on turn N that takes one turn is due when the counter advances to N+1. A longer order is due on its own later turn. Work with no finish turn is skipped until someone marks it finished.
 
-**Implemented.** Setup offers the tenday or the shorter chapter length, and whether festival days are counted or skipped. A new estate, and the first run of migration 009, use the tenday and skip festivals. The saved anchor is not moved.
+**Implemented.** Setup offers Tenday (FR) or 7 days (DMG), and a single line labeled Skip festival days. A new estate, and the first run of migration 009, use the tenday and skip festivals. The saved anchor is not moved.
 
-**Implemented.** Each time the turn moves forward, and whenever the date anchor is set or re-anchored, the session label becomes that turn’s in-game date. It no longer stays on an old note.
+**Implemented.** Home shows only the turn line, for example “Turn 4 · 10 Mirtul 1495 DR”. There is no session date beside it. Each committed turn stores the date it had when it was committed. Migration 010 drops the old session label so a stale note such as 30 Tarsakh cannot appear.
 
 **Implemented.** Build times and wall times that are not a whole number of Bastion turns are paid for and left unscheduled. They are not rounded. A cramped, roomy, or vast basic room, an upgrade from one size to the next, and a wall square are in this group. Someone marks them finished when the work is done.
 
@@ -71,6 +71,10 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 - Sell asks for a lot and a list-price amount that is still free. The payout uses the level markup automatically, and that automation stays. The markup is 10 percent before level 9, 20 percent from level 9, 50 percent from level 13, and 100 percent from level 17. At level 5, 500 GP of goods pays 550 GP. The money arrives on the next turn. John wants this markup to remain automatic.
 
 **Implemented.** “How many” appears only when Barrack Recruit is the chosen order. The Storehouse card shows the sell fields only for Sell, and the buy fields only for Buy. The level markup on a sale stays automatic.
+
+**Implemented.** A Stable sale pays 20 percent over the list price from level 9 up. The tracker adds that. The money arrives on the next turn. A Stable purchase charges the list price when the order is saved. The Storehouse markup is unchanged.
+
+**Implemented.** A Theater shows its performance die: d6, d8 from level 13, and d10 from level 17. A Teleportation Circle shows its spell level: 4th, or 8th from level 17. The tracker does not roll the die or cast the spell.
 
 **Implemented.** Record existing state can enter defenders already housed, loans, goods already on hand, and an order already underway. Recording goods does not charge anyone. Marking goods committed only reserves them. It is not a completed sale and it does not pay anyone. A note that an order is already underway does not resolve that order when turns advance. The exception is a Storehouse sale already underway: it is tied to a chosen lot and pays once on the next turn, without paying at the moment it is recorded.
 
@@ -88,14 +92,14 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** The old combined page is now Backup. It is still the plain list of saved changes, with who made each one, and the same JSON download.
 
-**Implemented.** Journal is a separate page. It does not change the estate. Any member, including a reader, can read it. Each recorded turn is a button:
+**Implemented.** Journal is a separate page. It does not change the estate. Any member, including a reader, can read it. It lists only committed turns. Setup, backup, corrections, renames, and roster edits are not cards. Those stay on Backup. Each turn is a button:
 
 - Turn: N
-- Date: the in-game date, or “date not set” when there is no anchor
+- Date: the date recorded when that turn was committed, or “date not set”
 
-Opening the button shows a short report in a steward’s voice. The report uses only what was recorded for that turn: orders, results, money, goods, and the people or rooms that changed with it. It does not invent campaign facts. Renames and other corrections are a short footnote, not the report itself.
+Opening the button shows a short ledger: one line for each facility order, such as “Storehouse: sell 500 gp of herbs.”, then the turn note. Maintain and a turn with no orders are one short line each. It does not invent campaign facts.
 
-**Implemented.** The newest turn card is open when the Journal is opened. The report says whether the owner was here, away with no message, or away and how word was sent. A turn that only recorded setup or a correction, such as goods, defenders, or an order already underway, has its own card. When orders are saved, the backup line names them. The turn note is part of that turn’s report.
+**Implemented.** The newest turn card is open when the Journal is opened. The page is styled like readable parchment, with a self-hosted handwriting font and a plain fallback. An old audit number that is later than the saved Bastion turn is cleared by migration 010, so it is not shown as a later turn. Future cards come from committed turns only. When orders are saved, the backup line still names them.
 
 ## Out of scope / manual
 
@@ -114,4 +118,4 @@ These are not automated, on purpose. The DM or the player enters them, or leaves
 
 **14 November 2026.** Any signed-in member of the estate can set or change the in-game date, not only the DM. The DM can release goods that were reserved without an open sale. Journal and Backup are separate pages, and the journal is a steward’s report of recorded turns.
 
-**15 November 2026.** Built: the tenday setting and festival-day choice; the session label following each turn’s date; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab; and the Journal details above. The decision records for these are in `doc/adr/`.
+**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The decision records are in `doc/adr/`.

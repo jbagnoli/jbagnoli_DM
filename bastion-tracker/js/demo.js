@@ -12,8 +12,8 @@ export function practiceState() {
   const go = (command) => {
     state = apply(state, command).state;
   };
-  go({ type: "set_clock", turn: 2, label: "Practice session" });
-  go({ type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: null });
+  go({ type: "set_clock", turn: 2 });
+  go({ type: "set_calendar_anchor", turn: 1, month: "tarsakh", day: 10, year: 1495 });
   go({ type: "set_finance", cashGp: 1300 });
   go({ type: "set_loan", creditor: "North mill", amountGp: 300, note: "Practice debt" });
   go({ type: "add_basic", unitId: "unit-party", roomId: "bedroom", space: "cramped", starter: true });
@@ -42,5 +42,15 @@ export function practiceState() {
   });
   go({ type: "record_goods", name: "Wool bolts", standardGp: 200, unitId: "unit-party" });
   go({ type: "add_basic", unitId: "unit-party", roomId: "parlor", space: "cramped" });
+  const store = state.facilities.find((item) => item.catalogId === "storehouse");
+  const wool = state.goods.find((item) => item.name === "Wool bolts");
+  go({
+    type: "commit_turn",
+    unitId: "unit-party",
+    presence: "present",
+    mode: "orders",
+    notes: "The yard was quiet.",
+    orders: [{ facilityId: store.id, suborder: "sell", lotId: wool.id, standardGp: 200 }],
+  });
   return state;
 }
