@@ -1349,6 +1349,14 @@ test("the backdrop keeps text on a dark scrim", async () => {
   assert.match(css, /--journal-ink:\s*#2a2118/);
 });
 
+test("a fieldset legend is not drawn on the ornate card frame", async () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const css = await readFile(path.join(root, "app.css"), "utf8");
+  assert.doesNotMatch(css, /\.stat, \.card, \.panel, fieldset/);
+  assert.match(css, /fieldset\s*\{[^}]*border:\s*1px solid var\(--gold-line\)/);
+  assert.match(css, /legend\s*\{[^}]*background:\s*#2a261f/);
+});
+
 test("the tracker no longer labels game time in days", async () => {
   const root = path.resolve(import.meta.dirname, "..");
   const names = ["rules.js", "render.js", "main.js", "catalog.js", "demo.js"];
