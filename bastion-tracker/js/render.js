@@ -575,8 +575,11 @@ function renderTurn(model) {
       <label for="turn-notes">Note for this turn <textarea id="turn-notes" name="notes" maxlength="600" placeholder="Optional. At most 600 characters."></textarea></label>
       <button class="primary" type="submit">Commit orders</button>
     </form>` : "";
-  return `<h2 class="with-mark">${mark("cycle")} Turn</h2>
-    <p class="muted">${esc(turnLine(state))}. Take a turn in order: advance the counter, see what finished, check the date, then choose orders.</p>
+  const turnHeading = state.clock.turn == null ? "Turn unknown" : `Turn ${state.clock.turn}`;
+  const turnDate = state.clock.turn == null || !shown?.text ? "date not set" : shown.text;
+  return `<h2 class="with-mark turn-head">${mark("cycle")}<span>${esc(turnHeading)}</span></h2>
+    <p class="turn-date">${esc(turnDate)}</p>
+    <p class="muted">Take a turn in order: advance the counter, see what finished, check the date, then choose orders.</p>
     ${state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Confirm it in Settings before relying on it.</p>` : ""}
     ${manage && phase === "advance" ? advance : ""}
     ${manage ? "" : `<p class="banner warn">${canSetDate(model) ? "Advancing the turn and issuing orders stay with the DM or an editor. Any member can still set the in-game date." : "Sign in as a member of this estate to set the date. Advancing the turn stays with the DM or an editor."}</p>`}

@@ -226,6 +226,14 @@ legend {
 }
 h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.08; margin: 8px 0; }
 h2 { font-size: 30px; margin: 0 0 8px; }
+.turn-head { margin-bottom: 0; color: var(--brass); }
+.turn-date {
+  margin: 2px 0 12px;
+  color: var(--brass);
+  font-family: Cinzel, Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
 h3 { font-size: 22px; margin: 0 0 8px; }
 .with-mark, .eyebrow { display: flex; align-items: center; gap: 8px; }
 .mark { color: var(--brass); flex: 0 0 auto; }
