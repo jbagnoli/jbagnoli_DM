@@ -1139,6 +1139,24 @@ test("the home page shows only the turn line", () => {
   assert.doesNotMatch(home, /Session date|30 Tarsakh/);
 });
 
+test("the turn page heading is the turn number and the date is the line under it", () => {
+  let state = party();
+  state = apply(state, { type: "set_clock", turn: 4 }).state;
+  state = apply(state, { type: "set_calendar_anchor", turn: 4, month: "mirtul", day: 10, year: 1495 }).state;
+  const page = { mode: "sandbox", view: "turn", error: "", notice: "", configured: false, serviceRole: false };
+  const html = render({ ...page, state });
+  assert.match(html, /<h2 class="with-mark turn-head">[\s\S]*<span>Turn 4<\/span><\/h2>/);
+  assert.match(html, /<p class="turn-date">10 Mirtul, 1495 DR<\/p>/);
+  assert.match(html, /Take a turn in order: advance the counter, see what finished, check the date, then choose orders\./);
+  assert.doesNotMatch(html, /Turn 4 · 10 Mirtul, 1495 DR/);
+  state = apply(state, { type: "reanchor_calendar", turn: 4, month: "mirtul", day: 11, year: 1495, reason: "The party lost a day." }).state;
+  const overridden = render({ ...page, state });
+  assert.match(overridden, /<p class="turn-date">11 Mirtul, 1495 DR<\/p>/);
+  const blank = render({ ...page, state: emptyEstate({ name: "Unnamed bastion" }) });
+  assert.match(blank, /<span>Turn unknown<\/span>/);
+  assert.match(blank, /<p class="turn-date">date not set<\/p>/);
+});
+
 test("loan payments split treasury and personal treasure and cannot go below zero", () => {
   let state = withCash(party(), 100);
   state = apply(state, { type: "set_loan", creditor: "Mill", amountGp: 300 }).state;

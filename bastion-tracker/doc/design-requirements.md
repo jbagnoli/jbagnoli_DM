@@ -46,6 +46,8 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** The turn form has a note of at most 600 characters. A longer note is refused on the page and in the saved command. Anyone who can take the turn can write it. The Journal shows it on that turn.
 
+**Implemented.** The Turn page heading is the turn number, such as “Turn 4”. The in-game date is the line directly under that heading. If the turn or the date is unknown, the heading says “Turn unknown” and the line says “date not set”. The instructions under that do not repeat the turn and date.
+
 **Implemented.** Taking a turn is one sequence:
 
 1. The turn counter moves forward by one.
@@ -120,4 +122,4 @@ These are not automated, on purpose. The DM or the player enters them, or leaves
 
 **14 November 2026.** Any signed-in member of the estate can set or change the in-game date, not only the DM. The DM can release goods that were reserved without an open sale. Journal and Backup are separate pages, and the journal is a steward’s report of recorded turns.
 
-**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The page uses the estate art as its backdrop, and every level change uses that same honor-system check. The decision records are in `doc/adr/`.
+**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The page uses the estate art as its backdrop, and every level change uses that same honor-system check. The Turn page heading is the turn number, with the date on the line under it. The decision records are in `doc/adr/`.
