@@ -276,7 +276,9 @@ test("a fresh estate leaves the Bastion turn unknown", () => {
   assert.equal(state.clock.turn, null);
   assert.equal(state.clock.anchor, null);
   const html = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
-  assert.match(html, /Bastion turn unknown/);
+  assert.match(html, /The Bastion turn is unknown/);
+  assert.match(html, /<h2>Current Turn<\/h2>/);
+  assert.doesNotMatch(html, /class="turn-line"/);
   assert.doesNotMatch(html, /in-game day/i);
 });
 
@@ -1135,7 +1137,9 @@ test("the home page shows only the turn line", () => {
   state = apply(state, { type: "take_turn" }).state;
   assert.equal(state.clock.turn, 2);
   const home = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
-  assert.match(home, /Turn 2 · 20 Tarsakh, 1495 DR/);
+  assert.match(home, /<h2>Current Turn 2 · 20 Tarsakh, 1495 DR<\/h2>/);
+  assert.equal(home.split("20 Tarsakh, 1495 DR").length, 2);
+  assert.doesNotMatch(home, /class="turn-line"/);
   assert.doesNotMatch(home, /Session date|30 Tarsakh/);
 });
 
@@ -1169,7 +1173,8 @@ test("loan payments split treasury and personal treasure and cannot go below zer
   assert.equal(state.finance.loans[0].amountGp, 200);
   assert.match(state.audit.at(-1).summary, /personal treasure/);
   const home = render({ mode: "sandbox", view: "dashboard", state, error: "", notice: "", configured: false, serviceRole: false });
-  assert.match(home, /What is due/);
+  assert.match(home, /<h2>Current Turn 1<\/h2>/);
+  assert.doesNotMatch(home, /What is due/);
   assert.match(home, /Mill/);
   assert.match(home, /200 GP still owed/);
 });
