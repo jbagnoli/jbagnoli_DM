@@ -40,7 +40,7 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** Any signed-in member of the estate can set the anchor or re-anchor the current turn, including a reader. Anonymous visitors cannot. A signed-in user who is not a member of that estate cannot. A re-anchor replaces the anchor at the current turn. Who did it, and why, stays on the Backup list. It does not create a second counter, and it does not move the turn number. A date already stored on a committed turn is left as it was.
 
-**Implemented.** Loans appear on the home page under What is due, with the lender and the amount still owed.
+**Implemented.** The home section that lists loans and open timers is headed by the live turn and its in-game date, for example “Current Turn 4 · 10 Mirtul, 1495 DR”. The date is the same one the Turn page uses. If no date is set, the heading is “Current Turn” plus the number. The header under the estate name does not repeat it. Loans still show the lender and the amount still owed. Paying a loan is unchanged.
 
 **Implemented.** During a turn the DM can record a payment on each loan. One amount comes from the treasury and is deducted from tracked cash, refused if cash is unknown or too small. The other amount is personal treasure. It reduces the loan and is not tracked as cash. The loan cannot go below zero. The payment is on the Backup list.
 
@@ -59,7 +59,7 @@ The rules follow the 2024 bastions chapter. The tracker does not use the older b
 
 **Implemented.** Setup offers Tenday (FR) or 7 days (DMG), and a single line labeled Skip festival days. A new estate, and the first run of migration 009, use the tenday and skip festivals. The saved anchor is not moved.
 
-**Implemented.** Home shows only the turn line, for example “Turn 4 · 10 Mirtul 1495 DR”. There is no session date beside it. Each committed turn stores the date it had when it was committed. Migration 010 drops the old session label so a stale note such as 30 Tarsakh cannot appear.
+**Implemented.** There is no separate session date. Each committed turn stores the date it had when it was committed. On Home, that live date is part of the Current Turn heading, not a second line under the estate name. Migration 010 drops the old session label so a stale note such as 30 Tarsakh cannot appear.
 
 **Implemented.** Build times and wall times that are not a whole number of Bastion turns are paid for and left unscheduled. They are not rounded. A cramped, roomy, or vast basic room, an upgrade from one size to the next, and a wall square are in this group. Someone marks them finished when the work is done.
 
@@ -122,4 +122,6 @@ These are not automated, on purpose. The DM or the player enters them, or leaves
 
 **14 November 2026.** Any signed-in member of the estate can set or change the in-game date, not only the DM. The DM can release goods that were reserved without an open sale. Journal and Backup are separate pages, and the journal is a steward’s report of recorded turns.
 
-**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The page uses the estate art as its backdrop, and every level change uses that same honor-system check. The Turn page heading is the turn number, with the date on the line under it. The decision records are in `doc/adr/`.
+**15 November 2026.** Built: the tenday setting and festival-day choice; “How many” only on Barrack Recruit; Storehouse fields only for the chosen order; defenders as a count; loans on the home page and repayment during a turn; a turn note; the compact People tab. The same day, the session date was removed. Home shows only the turn line, and each committed turn keeps its recorded date. Saving a level is on the honor system, from 5 upward, and names an order that the new level would make illegal. A Stable sale adds 20 percent. The Theater die and the Teleportation Circle spell level are shown. The journal is a short ledger of committed turns only. The page uses the estate art as its backdrop, and every level change uses that same honor-system check. The Turn page heading is the turn number, with the date on the line under it.
+
+**21 November 2026.** The home section that lists loans and open timers is titled with the live turn and date, such as “Current Turn 4 · 10 Mirtul, 1495 DR”. The line under the estate name no longer repeats it. The decision records are in `doc/adr/`.

@@ -24,10 +24,10 @@ function canSetDate(model) {
   return model.mode !== "remote" || ["dm", "editor", "reader"].includes(model.role);
 }
 
-function turnLine(state) {
-  if (state.clock.turn == null) return "Bastion turn unknown";
+function currentTurnHeading(state) {
+  if (state.clock.turn == null) return "Current Turn";
   const shown = dateForTurn(state.clock.anchor, state.clock.turn, state.clock);
-  return shown?.text ? `Turn ${state.clock.turn} · ${shown.text}` : `Turn ${state.clock.turn}`;
+  return shown?.text ? `Current Turn ${state.clock.turn} · ${shown.text}` : `Current Turn ${state.clock.turn}`;
 }
 
 function saveFeedback(model) {
@@ -151,7 +151,7 @@ function renderDashboard(model) {
   const projects = [...state.projects.filter((item) => item.status === "building"), ...state.walls.squares.filter((item) => item.status === "building")];
   const pending = state.events.filter((item) => item.status === "pending");
   const check = state.clock.turnNeedsCheck ? `<p class="banner warn">The saved turn counter is ${state.clock.turn ?? "unknown"}, not 3. Confirm the Bastion turn in Settings. It was not changed to 3 automatically.</p>` : "";
-  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"><p class="turn-line">${esc(turnLine(state))}</p></header>
+  return `${coverArt(true)}<header><p class="eyebrow">${mark("keep")} Estate</p><h1>${esc(state.name)}</h1><hr class="thread"></header>
     ${check}
     <div class="stats">
       <div class="stat"><span>Cash</span><strong>${esc(money(state))}</strong></div>
@@ -167,7 +167,7 @@ function renderDashboard(model) {
       <button type="button" data-action="nav" data-view="rooms">Rooms</button>
       <button type="button" data-action="nav" data-view="people">People</button>
     </div>
-    <section class="panel" style="margin-top:14px"><h2>What is due</h2>
+    <section class="panel" style="margin-top:14px"><h2>${esc(currentTurnHeading(state))}</h2>
       ${(state.finance.loans || []).length ? `<ul>${state.finance.loans.map((loan) => `<li>Loan · ${esc(loan.creditor)} · ${loan.amountGp} GP still owed</li>`).join("")}</ul>` : ""}
       ${projects.length || state.tasks.some((item) => item.status === "open") ? `<ul>${projects.map((item) => `<li>${esc(item.name || "Wall square")} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}</li>`).join("")}${state.tasks.filter((item) => item.status === "open").map((item) => `<li>${esc(item.auto)} · ${item.dueTurn == null ? "finish turn not scheduled" : `finishes on turn ${item.dueTurn}`}${item.timerNeedsCheck ? " · needs a finish turn" : ""}</li>`).join("")}</ul>` : (state.finance.loans || []).length ? "" : `<p class="muted">No open timers.</p>`}
     </section>`;

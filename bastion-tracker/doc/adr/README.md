@@ -46,3 +46,4 @@ What changes for the table, and what we are not doing.
 - [0015](0015-estate-backdrop.md) — The estate art is the page background, with a dark scrim and brass accents. 15 November 2026.
 - [0016](0016-one-level-path.md) — Every level change uses the same checks and does not grant replacements. 15 November 2026.
 - [0017](0017-turn-page-heading.md) — The Turn page heading is the turn number, with the date underneath. 15 November 2026.
+- [0018](0018-current-turn-heading.md) — The home section heading is the current turn and its date. 21 November 2026.
